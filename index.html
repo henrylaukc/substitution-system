@@ -1610,6 +1610,16 @@
                     }
                 });
 
+                // Collect teacher IDs already assigned as substitutes for the SAME slotKey on the same date
+                // (from previously confirmed substitution log records)
+                const alreadySubbedThisSlot = new Set();
+                substitutionLog.forEach(log => {
+                    if (log.date === subDate && log.slotKey === slotKey && log.substitute) {
+                        const matchedTeacher = teachers.find(t => t.name === log.substitute);
+                        if (matchedTeacher) alreadySubbedThisSlot.add(matchedTeacher.id);
+                    }
+                });
+
                 // Collect all absent teacher IDs for the day
                 const dateInfo = calendarData[subDate] || {};
                 const absentTeacherIds = new Set((dateInfo.absences || []).map(a => a.teacherId));
@@ -1629,6 +1639,9 @@
 
                     // Already arranged for another slot at same time? Skip
                     if (arrangedTeacherIds.has(t.id)) return false;
+
+                    // Already confirmed as substitute for this exact slot on this date? Skip
+                    if (alreadySubbedThisSlot.has(t.id)) return false;
 
                     // 6-period daily limit
                     const dailyPeriods = countTotalPeriodsForDay(t.timetable, amDay, weekday);
@@ -1703,7 +1716,7 @@
                     const bMatch = absentSubjects.some(s => s && bSubjects.includes(s)) ? 0 : 1;
                     return aMatch - bMatch;
                 });
-            }, [selectedAbsentee, teachers, subCycleDay, subWeekday, arrangedSlots, calendarData, subDate]);
+            }, [selectedAbsentee, teachers, subCycleDay, subWeekday, arrangedSlots, calendarData, subDate, substitutionLog]);
 
             // ===== 自動安排 =====
             const autoAssignAll = useCallback((absentTeacherId, existingArrangements = {}) => {
