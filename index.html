@@ -1614,13 +1614,12 @@
                 const amDay = subCycleDay || null;
                 const weekday = subWeekday || null;
 
-                // Collect already-arranged teacher IDs for other slots (to avoid double-booking)
-                const arrangedTeacherIds = new Set();
-                Object.entries(arrangedSlots).forEach(([key, val]) => {
-                    if (key !== slotKey && val && val.substituteId) {
-                        arrangedTeacherIds.add(val.substituteId);
-                    }
-                });
+                // Collect teacher IDs already arranged for the SAME slotKey in current session
+                // (to avoid assigning the same teacher twice to the same slot in one session)
+                const arrangedSameSlotIds = new Set();
+                if (arrangedSlots[slotKey]?.substituteId) {
+                    arrangedSameSlotIds.add(arrangedSlots[slotKey].substituteId);
+                }
 
                 // Collect teacher IDs already assigned as substitutes for the SAME slotKey on the same date
                 // (from previously confirmed substitution log records)
@@ -1637,32 +1636,49 @@
                 const absentTeacherIds = new Set((dateInfo.absences || []).map(a => a.teacherId));
                 absentTeacherIds.add(selectedAbsentee);
 
+                console.log(`[代課篩選] slotKey=${slotKey}, slotType=${slotType}, amDay=${amDay}, weekday=${weekday}, 缺席老師=${absentTeacher?.name}`);
+                console.log(`[代課篩選] 缺席老師IDs:`, [...absentTeacherIds], '已安排同節:', [...arrangedSameSlotIds], '已確認同節:', [...alreadySubbedThisSlot]);
+
                 return teachers.filter(t => {
-                    if (t.id === selectedAbsentee) return false;
-                    if (absentTeacherIds.has(t.id)) return false;
-                    if (!t.isActive) return false;
+                    if (t.id === selectedAbsentee) { console.log(`[代課篩選] 排除 ${t.name}: 是缺席老師`); return false; }
+                    if (absentTeacherIds.has(t.id)) { console.log(`[代課篩選] 排除 ${t.name}: 今天缺席`); return false; }
+                    if (!t.isActive) { console.log(`[代課篩選] 排除 ${t.name}: 非在職`); return false; }
 
                     // Must be free at this slot
                     if (slotType === 'duty') {
-                        if (hasDutyAt(t.timetable, slotKey)) return false;
+                        if (hasDutyAt(t.timetable, slotKey)) { console.log(`[代課篩選] 排除 ${t.name}: 有當值 ${slotKey}`); return false; }
                     } else {
-                        if (!isSlotFree(t.timetable, slotKey)) return false;
+                        if (!isSlotFree(t.timetable, slotKey)) { console.log(`[代課篩選] 排除 ${t.name}: ${slotKey} 有課 (值=${t.timetable?.[slotKey]})`); return false; }
                     }
 
-                    // Already arranged for another slot at same time? Skip
-                    if (arrangedTeacherIds.has(t.id)) return false;
+                    // Already arranged for this exact slot in current session? Skip
+                    if (arrangedSameSlotIds.has(t.id)) { console.log(`[代課篩選] 排除 ${t.name}: 本次已安排同節`); return false; }
 
                     // Already confirmed as substitute for this exact slot on this date? Skip
-                    if (alreadySubbedThisSlot.has(t.id)) return false;
+                    if (alreadySubbedThisSlot.has(t.id)) { console.log(`[代課篩選] 排除 ${t.name}: 已確認代課同節`); return false; }
 
-                    // 6-period daily limit
-                    const dailyPeriods = countTotalPeriodsForDay(t.timetable, amDay, weekday);
-                    // Count how many slots this teacher is already arranged for today
-                    let arrangedExtra = 0;
+                    // 6-period AM daily limit: only count AM periods (not PM/duty/tutorial)
+                    // A teacher can have up to 6 AM teaching periods per day
+                    let amPeriods = 0;
+                    if (amDay && t.timetable) {
+                        AM_PERIODS.forEach(p => {
+                            const k = amSlotKey(amDay, p);
+                            if (k in t.timetable && t.timetable[k] !== '') amPeriods++;
+                        });
+                    }
+                    // Count how many AM sub slots this teacher is already arranged for today
+                    let arrangedAmExtra = 0;
                     Object.entries(arrangedSlots).forEach(([key, val]) => {
-                        if (key !== slotKey && val && val.substituteId === t.id) arrangedExtra++;
+                        if (key !== slotKey && val && val.substituteId === t.id) {
+                            // Only count AM slots toward the limit
+                            if (getSlotType(key) === 'am') arrangedAmExtra++;
+                        }
                     });
-                    if (dailyPeriods + arrangedExtra + 1 > 6) return false;
+                    // Only apply 6-period limit for AM slots
+                    if (getSlotType(slotKey) === 'am' && amPeriods + arrangedAmExtra + 1 > 6) {
+                        console.log(`[代課篩選] 排除 ${t.name}: AM課節超過上限 (已有${amPeriods}節+安排${arrangedAmExtra}節+1 > 6)`);
+                        return false;
+                    }
 
                     // Duty mutex: lunch (D4) vs non-lunch (D1/D2/D3)
                     if (slotType === 'duty' && weekday) {
@@ -1696,9 +1712,10 @@
                     // Sub limit check
                     if (t.subLimit > 0) {
                         const totalSubs = (t.subCountClass || 0) + (t.subCountDuty || 0) + (t.subCountTutorial || 0);
-                        if (totalSubs >= t.subLimit) return false;
+                        if (totalSubs >= t.subLimit) { console.log(`[代課篩選] 排除 ${t.name}: 代課次數已達上限 (${totalSubs}/${t.subLimit})`); return false; }
                     }
 
+                    console.log(`[代課篩選] 通過 ${t.name} (職級=${t.role}, 代課積分=${t.subCountClass}/${t.subCountDuty}/${t.subCountTutorial})`);
                     return true;
                 }).map(t => {
                     const rolePriority = ROLE_PRIORITY[t.role] || 3;
