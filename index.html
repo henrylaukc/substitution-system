@@ -777,31 +777,41 @@
                     subCountDuty = parseInt(row[7]) || 0;
                     subCountTutorial = parseInt(row[8]) || 0;
                     absenceCount = parseInt(row[9]) || 0;
-                    subLimit = parseInt(row[10]) || 0;
-                    isActive = row[11] !== 'FALSE';
-                } else {
-                    // Old format compatibility
-                    const oldSubCount = parseInt(row[6]) || 0;
-                    subCountClass = oldSubCount;
-                    subLimit = parseInt(row[7]) || 0;
-                    isActive = row[8] !== 'FALSE';
-                }
-                const subjectStr = row[4] || '';
-                const subjects = subjectStr ? subjectStr.split('/').map(s => s.trim()).filter(s => s).slice(0, 3) : [];
-                while (subjects.length < 3) subjects.push('');
-                return {
-                    id: parseInt(row[0]) || Date.now(),
-                    name: row[1] || '',
-                    role: row[2] || 'teacher',
-                    roleName: row[3] || '',
-                    subject: subjectStr,
-                    subjects: subjects,
-                    timetable: timetable,
-                    subCountClass, subCountDuty, subCountTutorial,
-                    absenceCount,
-                    subLimit: subLimit,
-                    isActive: isActive,
-                };
+	                    subLimit = parseInt(row[10]) || 0;
+	                    isActive = row[11] !== 'FALSE';
+	                } else {
+	                    // Old format compatibility
+	                    const oldSubCount = parseInt(row[6]) || 0;
+	                    subCountClass = oldSubCount;
+	                    subLimit = parseInt(row[7]) || 0;
+	                    isActive = row[8] !== 'FALSE';
+	                }
+	                const subjectStr = row[4] || '';
+	                const subjects = subjectStr ? subjectStr.split('/').map(s => s.trim()).filter(s => s).slice(0, 3) : [];
+	                while (subjects.length < 3) subjects.push('');
+
+	                // Classes: row[12] if exists
+	                let classes = [];
+	                try { 
+	                    if (row[12]) classes = JSON.parse(row[12]); 
+	                } catch(e) {}
+	                if (!Array.isArray(classes)) classes = [];
+	                while (classes.length < 8) classes.push('');
+
+	                return {
+	                    id: parseInt(row[0]) || Date.now(),
+	                    name: row[1] || '',
+	                    role: row[2] || 'teacher',
+	                    roleName: row[3] || '',
+	                    subject: subjectStr,
+	                    subjects: subjects,
+	                    classes: classes.slice(0, 8),
+	                    timetable: timetable,
+	                    subCountClass, subCountDuty, subCountTutorial,
+	                    absenceCount,
+	                    subLimit: subLimit,
+	                    isActive: isActive,
+	                };
             });
         }
 
@@ -812,6 +822,7 @@
                 String(t.subCountClass || 0), String(t.subCountDuty || 0), String(t.subCountTutorial || 0),
                 String(t.absenceCount || 0),
                 String(t.subLimit), t.isActive ? 'TRUE' : 'FALSE',
+                JSON.stringify(t.classes || []),
             ]);
         }
 
@@ -1098,17 +1109,17 @@
         // INITIAL_TEACHERS：含導修課
         // =============================================
         const INITIAL_TEACHERS = [
-            { id: 1, name: "陳大文", role: "non_ct", roleName: "非班主任", subject: "中文",
+            { id: 1, name: "陳大文", role: "non_ct", roleName: "非班主任", subject: "中文", classes: ["4A", "4B", "", "", "", "", "", ""],
               timetable: {"1-1":"","1-2":"","1-3":"中文","1-4":"中文","1-5":"中文","1-6":"中文","1-7":"中文","1-8":"中文","2-1":"中文","2-2":"中文","2-3":"","2-4":"","2-5":"中文","2-6":"中文","2-7":"中文","2-8":"中文","3-1":"中文","3-2":"中文","3-3":"中文","3-4":"中文","3-5":"","3-6":"中文","3-7":"中文","3-8":"中文","4-1":"中文","4-2":"中文","4-3":"中文","4-4":"中文","4-5":"中文","4-6":"","4-7":"中文","4-8":"中文","5-1":"中文","5-2":"中文","5-3":"中文","5-4":"中文","5-5":"中文","5-6":"中文","5-7":"","5-8":"中文","6-1":"中文","6-2":"中文","6-3":"中文","6-4":"中文","6-5":"中文","6-6":"中文","6-7":"中文","6-8":"","Mon-1":"中文","Mon-2":"","Mon-T":"中文","Tue-1":"","Tue-2":"中文","Tue-T":"","Wed-1":"中文","Wed-2":"中文","Wed-T":"中文","Thu-1":"","Thu-2":"中文","Thu-T":"","Fri-1":"中文","Fri-2":"","Fri-T":"","Mon-D1":"當值","Mon-D2":"","Mon-D3":"","Mon-D4":"","Tue-D1":"","Tue-D2":"","Tue-D3":"","Tue-D4":"","Wed-D1":"","Wed-D2":"當值","Wed-D3":"","Wed-D4":"","Thu-D1":"","Thu-D2":"","Thu-D3":"","Thu-D4":"","Fri-D1":"","Fri-D2":"","Fri-D3":"當值","Fri-D4":""}, subCountClass: 2, subCountDuty: 0, subCountTutorial: 0, absenceCount: 0, subLimit: 0, isActive: true },
-            { id: 2, name: "李小美", role: "non_ct", roleName: "非班主任", subject: "英文",
+            { id: 2, name: "李小美", role: "non_ct", roleName: "非班主任", subject: "英文", classes: ["5A", "5B", "", "", "", "", "", ""],
               timetable: {"1-1":"英文","1-2":"英文","1-3":"","1-4":"","1-5":"英文","1-6":"英文","1-7":"英文","1-8":"英文","2-1":"","2-2":"英文","2-3":"英文","2-4":"英文","2-5":"英文","2-6":"英文","2-7":"英文","2-8":"英文","3-1":"英文","3-2":"","3-3":"英文","3-4":"英文","3-5":"英文","3-6":"英文","3-7":"英文","3-8":"英文","4-1":"英文","4-2":"英文","4-3":"英文","4-4":"英文","4-5":"","4-6":"英文","4-7":"英文","4-8":"英文","5-1":"英文","5-2":"英文","5-3":"英文","5-4":"英文","5-5":"英文","5-6":"","5-7":"英文","5-8":"英文","6-1":"英文","6-2":"英文","6-3":"英文","6-4":"英文","6-5":"英文","6-6":"英文","6-7":"","6-8":"英文","Mon-1":"","Mon-2":"英文","Mon-T":"英文","Tue-1":"英文","Tue-2":"","Tue-T":"","Wed-1":"英文","Wed-2":"英文","Wed-T":"","Thu-1":"英文","Thu-2":"","Thu-T":"英文","Fri-1":"","Fri-2":"英文","Fri-T":"","Mon-D1":"","Mon-D2":"","Mon-D3":"當值","Mon-D4":"","Tue-D1":"當值","Tue-D2":"","Tue-D3":"","Tue-D4":"","Wed-D1":"","Wed-D2":"","Wed-D3":"","Wed-D4":"當值","Thu-D1":"","Thu-D2":"","Thu-D3":"","Thu-D4":"","Fri-D1":"","Fri-D2":"當值","Fri-D3":"","Fri-D4":""}, subCountClass: 0, subCountDuty: 0, subCountTutorial: 0, absenceCount: 0, subLimit: 0, isActive: true },
-            { id: 3, name: "張志強", role: "senior", roleName: "主任", subject: "數學",
+            { id: 3, name: "張志強", role: "senior", roleName: "主任", subject: "數學", classes: ["6A", "6B", "", "", "", "", "", ""],
               timetable: {"1-1":"","1-2":"數學","1-3":"數學","1-4":"數學","1-5":"數學","1-6":"數學","1-7":"數學","1-8":"數學","2-1":"數學","2-2":"","2-3":"數學","2-4":"數學","2-5":"數學","2-6":"數學","2-7":"數學","2-8":"數學","3-1":"數學","3-2":"數學","3-3":"數學","3-4":"數學","3-5":"","3-6":"數學","3-7":"數學","3-8":"數學","4-1":"","4-2":"數學","4-3":"數學","4-4":"數學","4-5":"數學","4-6":"數學","4-7":"數學","4-8":"數學","5-1":"數學","5-2":"","5-3":"數學","5-4":"數學","5-5":"數學","5-6":"數學","5-7":"數學","5-8":"數學","Mon-1":"數學","Mon-2":"","Mon-T":"","Tue-1":"","Tue-2":"數學","Tue-T":"數學","Wed-1":"數學","Wed-2":"數學","Wed-T":"","Thu-1":"數學","Thu-2":"","Thu-T":"數學","Fri-1":"","Fri-2":"數學","Fri-T":"","Mon-D1":"","Mon-D2":"","Mon-D3":"","Mon-D4":"當值","Tue-D1":"","Tue-D2":"","Tue-D3":"","Tue-D4":"","Wed-D1":"","Wed-D2":"","Wed-D3":"","Wed-D4":"","Thu-D1":"當值","Thu-D2":"","Thu-D3":"","Thu-D4":"","Fri-D1":"","Fri-D2":"","Fri-D3":"","Fri-D4":"當值"}, subCountClass: 1, subCountDuty: 0, subCountTutorial: 0, absenceCount: 0, subLimit: 0, isActive: true },
-            { id: 4, name: "王美玲", role: "ct", roleName: "班主任", subject: "通識",
+            { id: 4, name: "王美玲", role: "ct", roleName: "班主任", subject: "通識", classes: ["4A", "5A", "6A", "", "", "", "", ""],
               timetable: {"2-3":"","2-4":"","4-8":"","6-1":"","1-1":"通識","1-2":"通識","1-3":"通識","1-4":"通識","1-5":"通識","1-6":"通識","1-7":"通識","1-8":"通識","2-1":"通識","2-2":"通識","2-5":"通識","2-6":"通識","2-7":"通識","2-8":"通識","Mon-1":"","Mon-2":"通識","Mon-T":"通識","Tue-1":"通識","Tue-2":"","Tue-T":"","Wed-1":"","Wed-2":"通識","Wed-T":"通識","Thu-1":"通識","Thu-2":"通識","Thu-T":"","Fri-1":"通識","Fri-2":"","Fri-T":"","Mon-D1":"","Mon-D2":"當值","Mon-D3":"","Mon-D4":"","Tue-D1":"","Tue-D2":"","Tue-D3":"當值","Tue-D4":"","Wed-D1":"當值","Wed-D2":"","Wed-D3":"","Wed-D4":"","Thu-D1":"","Thu-D2":"","Thu-D3":"","Thu-D4":"當值","Fri-D1":"","Fri-D2":"","Fri-D3":"","Fri-D4":""}, subCountClass: 3, subCountDuty: 0, subCountTutorial: 0, absenceCount: 0, subLimit: 0, isActive: true },
-            { id: 5, name: "劉偉國", role: "vp", roleName: "副校長", subject: "物理",
+            { id: 5, name: "劉偉國", role: "vp", roleName: "副校長", subject: "物理", classes: ["", "", "", "", "", "", "", ""],
               timetable: {"1-1":"","1-2":"","1-3":"","1-4":"","1-5":"","1-6":"","1-7":"","1-8":"","2-1":"","3-1":"","2-2":"物理","2-3":"物理","3-2":"物理","3-3":"物理","Mon-1":"","Mon-2":"","Mon-T":"","Tue-1":"","Tue-2":"","Tue-T":"","Wed-1":"","Wed-2":"","Wed-T":"","Thu-1":"物理","Thu-2":"","Thu-T":"","Fri-1":"","Fri-2":"","Fri-T":"","Mon-D1":"","Mon-D2":"","Mon-D3":"","Mon-D4":"","Tue-D1":"","Tue-D2":"","Tue-D3":"","Tue-D4":"","Wed-D1":"","Wed-D2":"","Wed-D3":"","Wed-D4":"","Thu-D1":"","Thu-D2":"","Thu-D3":"","Thu-D4":"","Fri-D1":"","Fri-D2":"","Fri-D3":"","Fri-D4":""}, subCountClass: 0, subCountDuty: 0, subCountTutorial: 0, absenceCount: 0, subLimit: 5, isActive: true },
-            { id: 6, name: "黃嘉嘉", role: "ct", roleName: "班主任", subject: "歷史",
+            { id: 6, name: "黃嘉嘉", role: "ct", roleName: "班主任", subject: "歷史", classes: ["4B", "5B", "6B", "", "", "", "", ""],
               timetable: {"1-5":"","1-6":"","3-1":"","5-8":"","1-1":"歷史","1-2":"歷史","1-3":"歷史","1-4":"歷史","1-7":"歷史","1-8":"歷史","2-1":"歷史","2-2":"歷史","2-3":"歷史","2-4":"歷史","2-5":"歷史","2-6":"歷史","2-7":"歷史","2-8":"歷史","Mon-1":"歷史","Mon-2":"","Mon-T":"","Tue-1":"","Tue-2":"歷史","Tue-T":"歷史","Wed-1":"歷史","Wed-2":"","Wed-T":"","Thu-1":"","Thu-2":"歷史","Thu-T":"","Fri-1":"歷史","Fri-2":"","Fri-T":"歷史","Mon-D1":"","Mon-D2":"","Mon-D3":"","Mon-D4":"","Tue-D1":"","Tue-D2":"","Tue-D3":"","Tue-D4":"當值","Wed-D1":"","Wed-D2":"","Wed-D3":"","Wed-D4":"","Thu-D1":"","Thu-D2":"","Thu-D3":"當值","Thu-D4":"","Fri-D1":"當值","Fri-D2":"","Fri-D3":"","Fri-D4":""}, subCountClass: 1, subCountDuty: 0, subCountTutorial: 0, absenceCount: 0, subLimit: 0, isActive: true },
         ];
 
@@ -1144,10 +1155,11 @@
                     roleName: obj.rolename || '',
                     subject: obj.subject || '',
                     subjects: (obj.subject || '').split('/').map(s => s.trim()).filter(s => s).slice(0, 3),
-                    timetable,
-                    subCountClass: parseInt(obj.subcountclass) || 0,
-                    subCountDuty: parseInt(obj.subcountduty) || 0,
-                    subCountTutorial: parseInt(obj.subcounttutorial) || 0,
+	                    timetable,
+	                    classes: obj.classes ? JSON.parse(obj.classes) : [],
+	                    subCountClass: parseInt(obj.subcountclass) || 0,
+	                    subCountDuty: parseInt(obj.subcountduty) || 0,
+	                    subCountTutorial: parseInt(obj.subcounttutorial) || 0,
                     absenceCount: parseInt(obj.absencecount) || 0,
                     subLimit: parseInt(obj.sublimit) || 0,
                     isActive: obj.isactive !== 'false' && obj.isactive !== 'FALSE',
@@ -1704,17 +1716,30 @@
                         dailyPeriods: dailyPeriods + arrangedExtra,
                     };
                 }).sort((a, b) => {
-                    // Sort: 代課積分（少優先，可為負數）→ 職級 → 科目配對
-                    if (a.relevantSubCount !== b.relevantSubCount) return a.relevantSubCount - b.relevantSubCount;
+                    // 1. 代課積分（高優先，分數愈高排愈前）
+                    if (a.relevantSubCount !== b.relevantSubCount) return b.relevantSubCount - a.relevantSubCount;
+                    
+                    // 2. 職級排序（班主任/非班主任 1 > 主任 2 > 副校長 3）
                     if (a.rolePriority !== b.rolePriority) return a.rolePriority - b.rolePriority;
-                    // 科目配對：缺席老師的科目與代課老師的科目是否匹配
+                    
+                    // 3. 任教班別匹配（缺席老師教的班級，優先安排也教該班級的老師）
                     const absentTeacher = teachers.find(t => t.id === selectedAbsentee);
+                    const absentClasses = absentTeacher ? (absentTeacher.classes || []) : [];
+                    const aClasses = a.classes || [];
+                    const bClasses = b.classes || [];
+                    
+                    const aClassMatch = absentClasses.some(c => c && aClasses.includes(c)) ? 0 : 1;
+                    const bClassMatch = absentClasses.some(c => c && bClasses.includes(c)) ? 0 : 1;
+                    
+                    if (aClassMatch !== bClassMatch) return aClassMatch - bClassMatch;
+
+                    // 4. 科目配對（後備排序）
                     const absentSubjects = absentTeacher ? (absentTeacher.subjects || (absentTeacher.subject ? [absentTeacher.subject] : [])) : [];
                     const aSubjects = a.subjects || (a.subject ? [a.subject] : []);
                     const bSubjects = b.subjects || (b.subject ? [b.subject] : []);
-                    const aMatch = absentSubjects.some(s => s && aSubjects.includes(s)) ? 0 : 1;
-                    const bMatch = absentSubjects.some(s => s && bSubjects.includes(s)) ? 0 : 1;
-                    return aMatch - bMatch;
+                    const aSubMatch = absentSubjects.some(s => s && aSubjects.includes(s)) ? 0 : 1;
+                    const bSubMatch = absentSubjects.some(s => s && bSubjects.includes(s)) ? 0 : 1;
+                    return aSubMatch - bSubMatch;
                 });
             }, [selectedAbsentee, teachers, subCycleDay, subWeekday, arrangedSlots, calendarData, subDate, substitutionLog]);
 
@@ -2527,13 +2552,14 @@
                 if (teacher) {
                     setEditingTeacher(teacher);
                     setEditForm({
-                        id: teacher.id,
-                        name: teacher.name || '', role: teacher.role || 'non_ct', roleName: teacher.roleName || '',
-                        subject: teacher.subject || '',
-                        subjects: teacher.subjects || [teacher.subject || '', '', ''],
-                        subLimit: teacher.subLimit || 0, isActive: teacher.isActive !== false,
-                        timetable: { ...(teacher.timetable || {}) },
-                    });
+	                        id: teacher.id,
+	                        name: teacher.name || '', role: teacher.role || 'non_ct', roleName: teacher.roleName || '',
+	                        subject: teacher.subject || '',
+	                        subjects: teacher.subjects || [teacher.subject || '', '', ''],
+	                        classes: teacher.classes || ['', '', '', '', '', '', '', ''],
+	                        subLimit: teacher.subLimit || 0, isActive: teacher.isActive !== false,
+	                        timetable: { ...(teacher.timetable || {}) },
+	                    });
                     setSelectedTeacherId(teacher.id);
                 } else {
                     setEditingTeacher(null);
@@ -2544,7 +2570,7 @@
                         tt[tutorialSlotKey(w)] = '';
                         DUTY_SLOTS.forEach(ds => { tt[dutySlotKey(w, ds)] = ''; });
                     });
-                    setEditForm({ id: null, name: '', role: 'non_ct', roleName: '', subject: '', subjects: ['', '', ''], subLimit: 0, isActive: true, timetable: tt });
+	                    setEditForm({ id: null, name: '', role: 'non_ct', roleName: '', subject: '', subjects: ['', '', ''], classes: ['', '', '', '', '', '', '', ''], subLimit: 0, isActive: true, timetable: tt });
                     setSelectedTeacherId('__new__');
                 }
             }, [setSelectedTeacherId]);
@@ -2556,23 +2582,25 @@
                 let newTeachers;
                 if (editingTeacher) {
                     const subjectStr = (editForm.subjects || []).filter(s => s.trim()).join('/') || cleanInput(editForm.subject) || '';
-                    newTeachers = teachers.map(t => t.id === editingTeacher.id ? {
-                        ...t, name, role: editForm.role, roleName: autoRoleName,
-                        subject: subjectStr,
-                        subjects: (editForm.subjects || ['', '', '']).slice(0, 3),
-                        subLimit: parseInt(editForm.subLimit) || 0,
-                        isActive: editForm.isActive, timetable: editForm.timetable,
-                    } : t);
+	                    newTeachers = teachers.map(t => t.id === editingTeacher.id ? {
+	                        ...t, name, role: editForm.role, roleName: autoRoleName,
+	                        subject: subjectStr,
+	                        subjects: (editForm.subjects || ['', '', '']).slice(0, 3),
+	                        classes: (editForm.classes || ['', '', '', '', '', '', '', '']).slice(0, 8),
+	                        subLimit: parseInt(editForm.subLimit) || 0,
+	                        isActive: editForm.isActive, timetable: editForm.timetable,
+	                    } : t);
                 } else {
                     const newSubjectStr = (editForm.subjects || []).filter(s => s.trim()).join('/') || cleanInput(editForm.subject) || '';
-                    const newTeacher = {
-                        id: Date.now(), name, role: editForm.role, roleName: autoRoleName,
-                        subject: newSubjectStr,
-                        subjects: (editForm.subjects || ['', '', '']).slice(0, 3),
-                        timetable: editForm.timetable,
-                        subCountClass: 0, subCountDuty: 0, subCountTutorial: 0,
-                        absenceCount: 0, subLimit: parseInt(editForm.subLimit) || 0, isActive: editForm.isActive,
-                    };
+	                    const newTeacher = {
+	                        id: Date.now(), name, role: editForm.role, roleName: autoRoleName,
+	                        subject: newSubjectStr,
+	                        subjects: (editForm.subjects || ['', '', '']).slice(0, 3),
+	                        classes: (editForm.classes || ['', '', '', '', '', '', '', '']).slice(0, 8),
+	                        timetable: editForm.timetable,
+	                        subCountClass: 0, subCountDuty: 0, subCountTutorial: 0,
+	                        absenceCount: 0, subLimit: parseInt(editForm.subLimit) || 0, isActive: editForm.isActive,
+	                    };
                     newTeachers = [...teachers, newTeacher];
                 }
                 setTeachers(newTeachers);
@@ -3459,6 +3487,22 @@
                                                                     const newSubjects = [...(editForm.subjects || ['', '', ''])];
                                                                     newSubjects[idx] = e.target.value;
                                                                     setEditForm(f => ({ ...f, subjects: newSubjects, subject: newSubjects.filter(s=>s).join('/') }));
+                                                                }
+                                                            }))
+                                                        )
+                                                    ),
+                                                    React.createElement('div', { style: { gridColumn: '1 / -1' } },
+                                                        React.createElement('label', { className: 'form-label' }, '任教班別（最多8個）'),
+                                                        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 } },
+                                                            [0, 1, 2, 3, 4, 5, 6, 7].map(idx => React.createElement('input', {
+                                                                key: idx,
+                                                                type: 'text', className: 'form-input',
+                                                                placeholder: `班別${idx + 1}`,
+                                                                value: (editForm.classes || ['', '', '', '', '', '', '', ''])[idx] || '',
+                                                                onChange: e => {
+                                                                    const newClasses = [...(editForm.classes || ['', '', '', '', '', '', '', ''])];
+                                                                    newClasses[idx] = e.target.value;
+                                                                    setEditForm(f => ({ ...f, classes: newClasses }));
                                                                 }
                                                             }))
                                                         )
