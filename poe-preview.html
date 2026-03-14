@@ -1,0 +1,777 @@
+<!DOCTYPE html><html lang="zh-Hant"><head><meta name="x-poe-datastore-behavior" content="local_only"><meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://code.jquery.com https://unpkg.com https://d3js.org https://threejs.org https://cdn.plot.ly https://stackpath.bootstrapcdn.com https://maps.googleapis.com https://cdn.tailwindcss.com https://ajax.googleapis.com https://kit.fontawesome.com https://cdn.datatables.net https://maxcdn.bootstrapcdn.com https://code.highcharts.com https://tako-static-assets-production.s3.amazonaws.com https://www.youtube.com https://fonts.googleapis.com https://fonts.gstatic.com https://pfst.cf2.poecdn.net https://puc.poecdn.net https://i.imgur.com https://wikimedia.org https://*.icons8.com https://*.giphy.com https://picsum.photos https://images.unsplash.com; frame-src 'self' https://www.youtube.com https://trytako.com; child-src 'self'; manifest-src 'self'; worker-src 'self'; upgrade-insecure-requests; block-all-mixed-content;">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>教務代課管理系統 - Google Sheets 雲端版</title>
+    <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'&gt;&lt;text y='28' font-size='28'&gt;📋&lt;/text&gt;&lt;/svg&gt;">
+
+    <script>
+    // ============================================================
+    //  ★★★ 請在此處填入你的固定 Spreadsheet ID ★★★
+    // ============================================================
+    const GAPI_CONFIG = Object.freeze({
+        CLIENT_ID: '520858818587-pgh8ssddk48ebu8ql6c4hr8etnl53rdc.apps.googleusercontent.com',
+        SCOPES: 'https://www.googleapis.com/auth/spreadsheets',
+        DISCOVERY_DOC: 'https://sheets.googleapis.com/$discovery/rest?version=v4',
+        // ↓↓↓ 把你的 Spreadsheet ID 貼在這裡 ↓↓↓
+        SPREADSHEET_ID: '在此貼上你的SpreadsheetID'
+    });
+
+    // ===== API 狀態（不使用 localStorage）=====
+    window._apiState = {
+        gapiReady: false,
+        gisReady: false,
+        tokenClient: null,
+        isSignedIn: false
+    };
+
+    function gapiLoaded() {
+        gapi.load('client', async () => {
+            try {
+                await gapi.client.init({
+                    discoveryDocs: [GAPI_CONFIG.DISCOVERY_DOC]
+                });
+                window._apiState.gapiReady = true;
+                window.dispatchEvent(new Event('gapi-ready'));
+                console.log('[API] GAPI client 初始化完成');
+            } catch (err) {
+                console.error('[API] GAPI 初始化失敗:', err);
+                window.dispatchEvent(new CustomEvent('gapi-error', { detail: err }));
+            }
+        });
+    }
+
+    function gisLoaded() {
+        try {
+            window._apiState.tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: GAPI_CONFIG.CLIENT_ID,
+                scope: GAPI_CONFIG.SCOPES,
+                callback: ''
+            });
+            window._apiState.gisReady = true;
+            window.dispatchEvent(new Event('gis-ready'));
+            console.log('[API] GIS client 初始化完成');
+        } catch (err) {
+            console.error('[API] GIS 初始化失敗:', err);
+            window.dispatchEvent(new CustomEvent('gis-error', { detail: err }));
+        }
+    }
+    </script>
+    <script async="" defer="" src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+    <script async="" defer="" src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+
+    <script crossorigin="" src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin="" src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                colors: {
+                    primary: {
+                        50:'#eff6ff',100:'#dbeafe',200:'#bfdbfe',300:'#93c5fd',
+                        400:'#60a5fa',500:'#3b82f6',600:'#2563eb',700:'#1d4ed8',
+                        800:'#1e40af',900:'#1e3a8a'
+                    }
+                },
+                fontFamily: {
+                    sans: ['-apple-system','BlinkMacSystemFont','Segoe UI','Noto Sans TC','Microsoft JhengHei','sans-serif']
+                }
+            }
+        }
+    }
+    </script>
+
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans TC', sans-serif; margin: 0; }
+
+        .login-bg {
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%);
+            min-height: 100vh;
+        }
+
+        .spinner {
+            border: 3px solid #e2e8f0;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 24px; height: 24px;
+            animation: spin 0.8s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .toast-container { position: fixed; top: 16px; right: 16px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+        .toast {
+            padding: 12px 20px; border-radius: 8px; color: #fff;
+            font-size: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            animation: slideIn 0.3s ease; cursor: pointer;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .toast-success { background: #16a34a; }
+        .toast-error   { background: #dc2626; }
+        .toast-info    { background: #2563eb; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+        .data-table { width: 100%; border-collapse: collapse; }
+        .data-table th { background: #f1f5f9; padding: 10px 14px; text-align: left; font-weight: 600; font-size: 13px; color: #475569; border-bottom: 2px solid #e2e8f0; white-space: nowrap; }
+        .data-table td { padding: 10px 14px; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+        .data-table tr:hover td { background: #f8fafc; }
+
+        .btn { padding: 8px 18px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; border: none; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px; }
+        .btn-primary { background: #3b82f6; color: #fff; }
+        .btn-primary:hover { background: #2563eb; }
+        .btn-success { background: #16a34a; color: #fff; }
+        .btn-success:hover { background: #15803d; }
+        .btn-danger  { background: #dc2626; color: #fff; }
+        .btn-danger:hover  { background: #b91c1c; }
+        .btn-outline { background: transparent; border: 1px solid #cbd5e1; color: #475569; }
+        .btn-outline:hover { background: #f8fafc; border-color: #94a3b8; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-sm { padding: 5px 12px; font-size: 13px; }
+
+        .form-input { width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; transition: border-color 0.2s; outline: none; }
+        .form-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+        .form-input.has-error { border-color: #dc2626; }
+        .form-label { display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 4px; }
+        .form-error  { font-size: 12px; color: #dc2626; margin-top: 2px; }
+
+        .card { background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04); }
+
+        .badge { display: inline-block; padding: 2px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; }
+        .badge-green  { background: #dcfce7; color: #15803d; }
+        .badge-yellow { background: #fef9c3; color: #a16207; }
+        .badge-red    { background: #fee2e2; color: #b91c1c; }
+        .badge-gray   { background: #f1f5f9; color: #64748b; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+    const { useState, useEffect, useCallback, useRef, useMemo, createContext, useContext } = React;
+
+    // ============================================================
+    // 1. Context
+    // ============================================================
+    const AppContext = createContext(null);
+    function useApp() {
+        const ctx = useContext(AppContext);
+        if (!ctx) throw new Error('useApp 必須在 AppProvider 內使用');
+        return ctx;
+    }
+
+    // ============================================================
+    // 2. Google Sheets API 服務層（固定 Spreadsheet ID，不用 localStorage）
+    // ============================================================
+    const SheetsAPI = {
+        /** 永遠使用設定檔中的固定 ID */
+        getSpreadsheetId() {
+            return GAPI_CONFIG.SPREADSHEET_ID;
+        },
+
+        async requestAuth() {
+            return new Promise((resolve, reject) => {
+                const tokenClient = window._apiState.tokenClient;
+                if (!tokenClient) return reject(new Error('Token client 尚未就緒'));
+
+                tokenClient.callback = (resp) => {
+                    if (resp.error) return reject(resp);
+                    window._apiState.isSignedIn = true;
+                    resolve(resp);
+                };
+                tokenClient.error_callback = (err) => reject(err);
+
+                if (gapi.client.getToken() === null) {
+                    tokenClient.requestAccessToken({ prompt: 'consent' });
+                } else {
+                    tokenClient.requestAccessToken({ prompt: '' });
+                }
+            });
+        },
+
+        _assertId() {
+            const sid = this.getSpreadsheetId();
+            if (!sid || sid === '在此貼上你的SpreadsheetID') {
+                throw new Error('尚未設定 Spreadsheet ID，請在程式碼頂部 GAPI_CONFIG.SPREADSHEET_ID 填入');
+            }
+            return sid;
+        },
+
+        async readSheet(range) {
+            const sid = this._assertId();
+            const resp = await gapi.client.sheets.spreadsheets.values.get({
+                spreadsheetId: sid,
+                range
+            });
+            return resp.result.values || [];
+        },
+
+        async appendSheet(range, values) {
+            const sid = this._assertId();
+            return (await gapi.client.sheets.spreadsheets.values.append({
+                spreadsheetId: sid,
+                range,
+                valueInputOption: 'USER_ENTERED',
+                insertDataOption: 'INSERT_ROWS'
+            }, { values })).result;
+        },
+
+        async updateSheet(range, values) {
+            const sid = this._assertId();
+            return (await gapi.client.sheets.spreadsheets.values.update({
+                spreadsheetId: sid,
+                range,
+                valueInputOption: 'USER_ENTERED'
+            }, { values })).result;
+        },
+
+        async deleteRow(sheetName, rowIndex) {
+            const sid = this._assertId();
+            const meta = await gapi.client.sheets.spreadsheets.get({ spreadsheetId: sid });
+            const sheet = meta.result.sheets.find(s => s.properties.title === sheetName);
+            if (!sheet) throw new Error('找不到工作表：' + sheetName);
+
+            await gapi.client.sheets.spreadsheets.batchUpdate({
+                spreadsheetId: sid,
+                resource: {
+                    requests: [{
+                        deleteDimension: {
+                            range: {
+                                sheetId: sheet.properties.sheetId,
+                                dimension: 'ROWS',
+                                startIndex: rowIndex,
+                                endIndex: rowIndex + 1
+                            }
+                        }
+                    }]
+                }
+            });
+        },
+
+        async getSheetNames() {
+            const sid = this._assertId();
+            const meta = await gapi.client.sheets.spreadsheets.get({ spreadsheetId: sid });
+            return meta.result.sheets.map(s => s.properties.title);
+        }
+    };
+
+    // ============================================================
+    // 3. Toast 通知
+    // ============================================================
+    function Toast({ message, type = 'info', onClose }) {
+        useEffect(() => {
+            const t = setTimeout(onClose, 3500);
+            return () => clearTimeout(t);
+        }, [onClose]);
+
+        const icons = { success: '✅', error: '❌', info: 'ℹ️' };
+        return (
+            <div className={`toast toast-${type}`} onClick={onClose}>
+                {icons[type] || ''} {message}
+            </div>
+        );
+    }
+
+    function ToastContainer({ toasts, onRemove }) {
+        if (toasts.length === 0) return null;
+        return (
+            <div className="toast-container">
+                {toasts.map(t => (
+                    <Toast key={t.id} message={t.message} type={t.type} onClose={() => onRemove(t.id)} />
+                ))}
+            </div>
+        );
+    }
+
+    // ============================================================
+    // 4. 確認對話框（取代 window.confirm）
+    // ============================================================
+    function ConfirmDialog({ open, title, message, onConfirm, onCancel }) {
+        if (!open) return null;
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onCancel}>
+                <div className="card p-6 w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+                    <h3 className="text-base font-bold text-gray-800 mb-2">{title || '確認'}</h3>
+                    <p className="text-sm text-gray-600 mb-5">{message}</p>
+                    <div className="flex justify-end gap-2">
+                        <button className="btn btn-outline btn-sm" onClick={onCancel}>取消</button>
+                        <button className="btn btn-danger btn-sm" onClick={onConfirm}>確定</button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // ============================================================
+    // 5. 常數：工作表名稱與欄位定義
+    // ============================================================
+    const SHEET_NAME = '代課紀錄';
+    const SHEET_RANGE = SHEET_NAME + '!A2:H';
+    const APPEND_RANGE = SHEET_NAME + '!A:H';
+    const HEADERS = ['日期', '節次', '原授課教師', '代課教師', '班級', '科目', '事由', '狀態'];
+
+    const STATUS_OPTIONS = ['待處理', '已完成', '已取消'];
+    function statusBadge(status) {
+        if (status === '已完成') return 'badge-green';
+        if (status === '待處理') return 'badge-yellow';
+        if (status === '已取消') return 'badge-red';
+        return 'badge-gray';
+    }
+
+    // ============================================================
+    // 6. 登入頁面（不需要輸入 Spreadsheet ID）
+    // ============================================================
+    function LoginPage({ onLogin }) {
+        const [loading, setLoading] = useState(false);
+        const [error, setError] = useState('');
+        const [apiReady, setApiReady] = useState(false);
+
+        useEffect(() => {
+            const check = () => {
+                if (window._apiState.gapiReady && window._apiState.gisReady) setApiReady(true);
+            };
+            window.addEventListener('gapi-ready', check);
+            window.addEventListener('gis-ready', check);
+            check();
+            return () => {
+                window.removeEventListener('gapi-ready', check);
+                window.removeEventListener('gis-ready', check);
+            };
+        }, []);
+
+        const handleLogin = async () => {
+            setLoading(true);
+            setError('');
+            try {
+                SheetsAPI._assertId(); // 先檢查 ID 是否已設定
+                await SheetsAPI.requestAuth();
+                // 驗證連線
+                await SheetsAPI.readSheet(SHEET_NAME + '!A1:A1');
+                onLogin();
+            } catch (err) {
+                console.error('登入失敗:', err);
+                setError(err?.result?.error?.message || err?.message || '登入失敗，請檢查權限與網路');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        return (
+            <div className="login-bg flex items-center justify-center p-4">
+                <div className="card p-8 w-full max-w-md">
+                    <div className="text-center mb-6">
+                        <div className="text-5xl mb-3">📋</div>
+                        <h1 className="text-xl font-bold text-gray-800">教務代課管理系統</h1>
+                        <p className="text-sm text-gray-500 mt-1">Google Sheets 雲端版</p>
+                    </div>
+
+                    <div className="text-center text-sm text-gray-500 mb-4 bg-gray-50 rounded-lg p-3">
+                        已連結 Spreadsheet：<br />
+                        <code className="text-xs text-primary-600 break-all">{GAPI_CONFIG.SPREADSHEET_ID}</code>
+                    </div>
+
+                    {error && (
+                        <div className="bg-red-50 text-red-700 text-sm p-3 rounded-lg mb-4">
+                            ❌ {error}
+                        </div>
+                    )}
+
+                    <button
+                        className="btn btn-primary w-full justify-center text-base py-3"
+                        onClick={handleLogin}
+                        disabled={loading || !apiReady}
+                    >
+                        {loading ? <><span className="spinner"></span> 連線中...</> :
+                         !apiReady ? '⏳ API 載入中...' :
+                         '🔐 登入 Google 帳號'}
+                    </button>
+
+                    {!apiReady && (
+                        <p className="text-xs text-center text-yellow-600 mt-3">正在載入 Google API，請稍候…</p>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+    // ============================================================
+    // 7. 儀表板
+    // ============================================================
+    function Dashboard() {
+        const { showToast, setPage } = useApp();
+        const [stats, setStats] = useState({ total: 0, pending: 0, completed: 0, cancelled: 0 });
+        const [loading, setLoading] = useState(true);
+
+        const load = useCallback(async () => {
+            setLoading(true);
+            try {
+                const data = await SheetsAPI.readSheet(SHEET_RANGE);
+                const total = data.length;
+                const pending   = data.filter(r => (r[7] || '') === '待處理').length;
+                const completed = data.filter(r => (r[7] || '') === '已完成').length;
+                const cancelled = data.filter(r => (r[7] || '') === '已取消').length;
+                setStats({ total, pending, completed, cancelled });
+            } catch (err) {
+                showToast('載入統計失敗：' + (err?.result?.error?.message || err.message), 'error');
+            } finally {
+                setLoading(false);
+            }
+        }, [showToast]);
+
+        useEffect(() => { load(); }, [load]);
+
+        const cards = [
+            { label: '代課總數', value: stats.total,     icon: '📊', cls: 'bg-blue-50   text-blue-700' },
+            { label: '待處理',   value: stats.pending,   icon: '⏳', cls: 'bg-yellow-50 text-yellow-700' },
+            { label: '已完成',   value: stats.completed, icon: '✅', cls: 'bg-green-50  text-green-700' },
+            { label: '已取消',   value: stats.cancelled, icon: '🚫', cls: 'bg-red-50    text-red-700' },
+        ];
+
+        return (
+            <div>
+                <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+                    <h2 className="text-lg font-bold text-gray-800">📊 總覽儀表板</h2>
+                    <button className="btn btn-outline btn-sm" onClick={load} disabled={loading}>
+                        {loading ? <span className="spinner" style={{width:16,height:16}}></span> : '🔄'} 重新整理
+                    </button>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+                    {cards.map((c, i) => (
+                        <div key={i} className={`card p-5 ${c.cls}`}>
+                            <div className="text-2xl mb-1">{c.icon}</div>
+                            <div className="text-2xl font-bold">{loading ? '–' : c.value}</div>
+                            <div className="text-sm opacity-80">{c.label}</div>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="card p-5">
+                    <h3 className="font-semibold text-gray-700 mb-3">快速操作</h3>
+                    <div className="flex flex-wrap gap-3">
+                        <button className="btn btn-primary" onClick={() => setPage('records')}>📋 查看代課紀錄</button>
+                        <button className="btn btn-success" onClick={() => setPage('add')}>➕ 新增代課</button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // ============================================================
+    // 8. 代課紀錄列表
+    // ============================================================
+    function RecordList() {
+        const { showToast } = useApp();
+        const [records, setRecords] = useState([]);
+        const [loading, setLoading] = useState(true);
+        const [search, setSearch]   = useState('');
+        const [confirm, setConfirm] = useState({ open: false, id: null });
+
+        const load = useCallback(async () => {
+            setLoading(true);
+            try {
+                const data = await SheetsAPI.readSheet(SHEET_RANGE);
+                // rowIndex = 資料列在 Sheet 中的 0-based index（含標題行偏移）
+                setRecords(data.map((row, i) => ({ rowIndex: i + 1, data: row })));
+            } catch (err) {
+                showToast('載入紀錄失敗：' + (err?.result?.error?.message || err.message), 'error');
+            } finally {
+                setLoading(false);
+            }
+        }, [showToast]);
+
+        useEffect(() => { load(); }, [load]);
+
+        const doDelete = async () => {
+            const { id } = confirm;
+            setConfirm({ open: false, id: null });
+            try {
+                await SheetsAPI.deleteRow(SHEET_NAME, id);
+                showToast('已刪除紀錄', 'success');
+                load();
+            } catch (err) {
+                showToast('刪除失敗：' + (err?.result?.error?.message || err.message), 'error');
+            }
+        };
+
+        const filtered = useMemo(() => {
+            if (!search.trim()) return records;
+            const kw = search.trim().toLowerCase();
+            return records.filter(r => r.data.some(c => (c || '').toLowerCase().includes(kw)));
+        }, [records, search]);
+
+        return (
+            <div>
+                <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                    <h2 className="text-lg font-bold text-gray-800">📋 代課紀錄</h2>
+                    <div className="flex gap-2 items-center">
+                        <input
+                            className="form-input" style={{ width: 200 }}
+                            placeholder="🔍 搜尋…"
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                        />
+                        <button className="btn btn-outline btn-sm" onClick={load} disabled={loading}>🔄</button>
+                    </div>
+                </div>
+
+                <div className="card overflow-x-auto">
+                    {loading ? (
+                        <div className="p-12 text-center text-gray-400">
+                            <span className="spinner"></span>
+                            <div className="mt-2 text-sm">載入中…</div>
+                        </div>
+                    ) : filtered.length === 0 ? (
+                        <div className="p-12 text-center text-gray-400 text-sm">
+                            {search ? '找不到符合的紀錄' : '尚無代課紀錄，請先新增'}
+                        </div>
+                    ) : (
+                        <table className="data-table">
+                            <thead>
+                                <tr>
+                                    <th style={{width:40}}>#</th>
+                                    {HEADERS.map(h => <th key={h}>{h}</th>)}
+                                    <th style={{width:70}}>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filtered.map((rec, i) => (
+                                    <tr key={rec.rowIndex}>
+                                        <td className="text-gray-400 text-xs">{i + 1}</td>
+                                        {HEADERS.map((_, ci) => (
+                                            <td key={ci}>
+                                                {ci === 7 ? (
+                                                    <span className={`badge ${statusBadge(rec.data[ci])}`}>
+                                                        {rec.data[ci] || '–'}
+                                                    </span>
+                                                ) : (rec.data[ci] || '–')}
+                                            </td>
+                                        ))}
+                                        <td>
+                                            <button
+                                                className="btn btn-danger btn-sm"
+                                                onClick={() => setConfirm({ open: true, id: rec.rowIndex })}
+                                            >
+                                                刪除
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+                <div className="text-xs text-gray-400 mt-2 text-right">共 {filtered.length} 筆紀錄</div>
+
+                <ConfirmDialog
+                    open={confirm.open}
+                    title="刪除確認"
+                    message="確定要刪除這筆代課紀錄嗎？此操作無法復原。"
+                    onConfirm={doDelete}
+                    onCancel={() => setConfirm({ open: false, id: null })}
+                />
+            </div>
+        );
+    }
+
+    // ============================================================
+    // 9. 新增代課表單
+    // ============================================================
+    const EMPTY_FORM = {
+        date: new Date().toISOString().slice(0, 10),
+        period: '', originalTeacher: '', subTeacher: '',
+        className: '', subject: '', reason: '', status: '待處理'
+    };
+
+    const FORM_FIELDS = [
+        { key: 'date',            label: '日期',       type: 'date',   required: true },
+        { key: 'period',          label: '節次',       type: 'text',   required: true,  placeholder: '例：第 1 節' },
+        { key: 'originalTeacher', label: '原授課教師', type: 'text',   required: true },
+        { key: 'subTeacher',      label: '代課教師',   type: 'text',   required: true },
+        { key: 'className',       label: '班級',       type: 'text',   required: true,  placeholder: '例：三年一班' },
+        { key: 'subject',         label: '科目',       type: 'text',   required: true },
+        { key: 'reason',          label: '事由',       type: 'text',   required: false, placeholder: '例：公假、病假…' },
+        { key: 'status',          label: '狀態',       type: 'select', required: false, options: STATUS_OPTIONS },
+    ];
+
+    function AddRecordForm() {
+        const { showToast, setPage } = useApp();
+        const [form, setForm]     = useState({ ...EMPTY_FORM });
+        const [errors, setErrors] = useState({});
+        const [loading, setLoading] = useState(false);
+
+        const set = (key, val) => {
+            setForm(p => ({ ...p, [key]: val }));
+            if (errors[key]) setErrors(p => { const n = { ...p }; delete n[key]; return n; });
+        };
+
+        const validate = () => {
+            const errs = {};
+            FORM_FIELDS.forEach(f => {
+                if (f.required && !(form[f.key] || '').trim()) errs[f.key] = `${f.label} 為必填`;
+            });
+            setErrors(errs);
+            return Object.keys(errs).length === 0;
+        };
+
+        const submit = async (e) => {
+            e.preventDefault();
+            if (!validate()) return;
+            setLoading(true);
+            try {
+                const row = FORM_FIELDS.map(f => form[f.key] || '');
+                await SheetsAPI.appendSheet(APPEND_RANGE, [row]);
+                showToast('已成功新增代課紀錄！', 'success');
+                setPage('records');
+            } catch (err) {
+                showToast('新增失敗：' + (err?.result?.error?.message || err.message), 'error');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        return (
+            <div>
+                <h2 className="text-lg font-bold text-gray-800 mb-4">➕ 新增代課紀錄</h2>
+                <div className="card p-6">
+                    <form onSubmit={submit}>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-4">
+                            {FORM_FIELDS.map(f => (
+                                <div key={f.key}>
+                                    <label className="form-label">
+                                        {f.label}{f.required && <span className="text-red-500"> *</span>}
+                                    </label>
+                                    {f.type === 'select' ? (
+                                        <select className="form-input" value={form[f.key]} onChange={e => set(f.key, e.target.value)}>
+                                            {f.options.map(o => <option key={o} value={o}>{o}</option>)}
+                                        </select>
+                                    ) : (
+                                        <input
+                                            type={f.type}
+                                            className={`form-input ${errors[f.key] ? 'has-error' : ''}`}
+                                            placeholder={f.placeholder || ''}
+                                            value={form[f.key]}
+                                            onChange={e => set(f.key, e.target.value)}
+                                        />
+                                    )}
+                                    {errors[f.key] && <div className="form-error">{errors[f.key]}</div>}
+                                </div>
+                            ))}
+                        </div>
+                        <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
+                            <button type="submit" className="btn btn-primary" disabled={loading}>
+                                {loading ? <><span className="spinner" style={{width:16,height:16}}></span> 儲存中…</> : '💾 儲存'}
+                            </button>
+                            <button type="button" className="btn btn-outline" onClick={() => setPage('dashboard')} disabled={loading}>
+                                取消
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        );
+    }
+
+    // ============================================================
+    // 10. 導航列
+    // ============================================================
+    function Navbar({ onLogout }) {
+        const { page, setPage } = useApp();
+        const items = [
+            { key: 'dashboard', label: '📊 總覽' },
+            { key: 'records',   label: '📋 紀錄' },
+            { key: 'add',       label: '➕ 新增' },
+        ];
+        return (
+            <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
+                <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
+                    <div className="flex items-center gap-1 overflow-x-auto">
+                        <span className="font-bold text-gray-800 mr-3 whitespace-nowrap">📋 代課管理</span>
+                        {items.map(n => (
+                            <button
+                                key={n.key}
+                                className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                                    page === n.key ? 'bg-blue-100 text-blue-700' : 'text-gray-500 hover:bg-gray-100'
+                                }`}
+                                onClick={() => setPage(n.key)}
+                            >
+                                {n.label}
+                            </button>
+                        ))}
+                    </div>
+                    <button className="btn btn-outline btn-sm whitespace-nowrap" onClick={onLogout}>🚪 登出</button>
+                </div>
+            </header>
+        );
+    }
+
+    // ============================================================
+    // 11. 主要版面
+    // ============================================================
+    function MainApp({ onLogout }) {
+        const { page } = useApp();
+        return (
+            <div className="min-h-screen bg-gray-50">
+                <Navbar onLogout={onLogout} />
+                <main className="max-w-6xl mx-auto px-4 py-6">
+                    {page === 'dashboard' && <Dashboard />}
+                    {page === 'records'   && <RecordList />}
+                    {page === 'add'       && <AddRecordForm />}
+                </main>
+            </div>
+        );
+    }
+
+    // ============================================================
+    // 12. Root App
+    // ============================================================
+    function App() {
+        const [loggedIn, setLoggedIn] = useState(false);
+        const [page, setPage]         = useState('dashboard');
+        const [toasts, setToasts]     = useState([]);
+
+        const showToast = useCallback((message, type = 'info') => {
+            setToasts(prev => [...prev, { id: Date.now() + Math.random(), message, type }]);
+        }, []);
+
+        const removeToast = useCallback((id) => {
+            setToasts(prev => prev.filter(t => t.id !== id));
+        }, []);
+
+        const logout = useCallback(() => {
+            try {
+                const token = gapi.client.getToken();
+                if (token) {
+                    google.accounts.oauth2.revoke(token.access_token);
+                    gapi.client.setToken('');
+                }
+            } catch (e) { /* ignore */ }
+            window._apiState.isSignedIn = false;
+            setLoggedIn(false);
+            setPage('dashboard');
+            showToast('已登出', 'info');
+        }, [showToast]);
+
+        const ctx = useMemo(() => ({ page, setPage, showToast }), [page, showToast]);
+
+        return (
+            <AppContext.Provider value={ctx}>
+                {loggedIn
+                    ? <MainApp onLogout={logout} />
+                    : <LoginPage onLogin={() => { setLoggedIn(true); showToast('登入成功！', 'success'); }} />
+                }
+                <ToastContainer toasts={toasts} onRemove={removeToast} />
+            </AppContext.Provider>
+        );
+    }
+
+    // ============================================================
+    // 13. Mount
+    // ============================================================
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+
+
+</body></html>
