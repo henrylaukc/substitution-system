@@ -386,6 +386,28 @@
             }
         }
 
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal, .modal-content {
+            background: white;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-xl);
+            padding: 28px;
+            max-width: 520px;
+            width: 90%;
+            max-height: 85vh;
+            overflow-y: auto;
+        }
+
         /* Teacher Management Split Panel */
         .teacher-split-panel {
             display: flex;
@@ -880,11 +902,14 @@
             values.forEach(row => {
                 const dateStr = row[0];
                 if (!dateStr) return;
+                let absences = [];
+                try { if (row[4]) absences = JSON.parse(row[4]); } catch(e) { console.warn('Calendar absences JSON parse error for', dateStr, e); }
+                if (!Array.isArray(absences)) absences = [];
                 cal[dateStr] = {
                     cycleDay: row[1] ? parseInt(row[1]) : null,
                     isHoliday: row[2] === 'TRUE',
                     holidayName: row[3] || '',
-                    absences: row[4] ? JSON.parse(row[4]) : [],
+                    absences: absences,
                 };
             });
             return cal;
@@ -942,7 +967,7 @@
                     await gapi.client.sheets.spreadsheets.batchUpdate({ spreadsheetId: SPREADSHEET_ID, resource: { requests } });
                 }
                 const headerChecks = [
-                    { range: 'Teachers!A1:L1', cols: 12, data: [['id','name','role','roleName','subject','timetableJSON','subCountClass','subCountDuty','subCountTutorial','absenceCount','subLimit','isActive']] },
+                    { range: 'Teachers!A1:M1', cols: 13, data: [['id','name','role','roleName','subject','timetableJSON','subCountClass','subCountDuty','subCountTutorial','absenceCount','subLimit','isActive','classesJSON']] },
                     { range: 'Logs!A1:L1', cols: 12, data: [['id','date','slotKey','slotLabel','slotType','absent','absentSubject','substitute','substituteSubject','role','sameSubject','reason']] },
                     { range: 'Calendar!A1:E1', cols: 5, data: [['date','cycleDay','isHoliday','holidayName','absences']] },
                 ];
@@ -1017,7 +1042,7 @@
 
         async function readAllData() {
             const [teachersResponse, logsResponse, calendarResponse] = await Promise.all([
-                gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Teachers!A2:L' }),
+                gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Teachers!A2:M' }),
                 gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Logs!A2:L' }),
                 gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Calendar!A2:E' }),
             ]);
@@ -1029,7 +1054,7 @@
         }
 
         async function writeAllData(teachers, logs, calendarData) {
-            const clearRanges = ['Teachers!A2:L10000', 'Logs!A2:L10000', 'Calendar!A2:E10000'];
+            const clearRanges = ['Teachers!A2:M10000', 'Logs!A2:L10000', 'Calendar!A2:E10000'];
             await gapi.client.sheets.spreadsheets.values.batchClear({ spreadsheetId: SPREADSHEET_ID, resource: { ranges: clearRanges } });
             const data = [];
             if (teachers.length > 0) data.push({ range: 'Teachers!A2', values: formatTeachersForSheet(teachers) });
@@ -1109,17 +1134,17 @@
         // INITIAL_TEACHERS：含導修課
         // =============================================
         const INITIAL_TEACHERS = [
-            { id: 1, name: "陳大文", role: "non_ct", roleName: "非班主任", subject: "中文", classes: ["4A", "4B", "", "", "", "", "", ""],
+            { id: 1, name: "陳大文", role: "non_ct", roleName: "非班主任", subject: "中文", subjects: ["中文", "", ""], classes: ["4A", "4B", "", "", "", "", "", ""],
               timetable: {"1-1":"","1-2":"","1-3":"中文","1-4":"中文","1-5":"中文","1-6":"中文","1-7":"中文","1-8":"中文","2-1":"中文","2-2":"中文","2-3":"","2-4":"","2-5":"中文","2-6":"中文","2-7":"中文","2-8":"中文","3-1":"中文","3-2":"中文","3-3":"中文","3-4":"中文","3-5":"","3-6":"中文","3-7":"中文","3-8":"中文","4-1":"中文","4-2":"中文","4-3":"中文","4-4":"中文","4-5":"中文","4-6":"","4-7":"中文","4-8":"中文","5-1":"中文","5-2":"中文","5-3":"中文","5-4":"中文","5-5":"中文","5-6":"中文","5-7":"","5-8":"中文","6-1":"中文","6-2":"中文","6-3":"中文","6-4":"中文","6-5":"中文","6-6":"中文","6-7":"中文","6-8":"","Mon-1":"中文","Mon-2":"","Mon-T":"中文","Tue-1":"","Tue-2":"中文","Tue-T":"","Wed-1":"中文","Wed-2":"中文","Wed-T":"中文","Thu-1":"","Thu-2":"中文","Thu-T":"","Fri-1":"中文","Fri-2":"","Fri-T":"","Mon-D1":"當值","Mon-D2":"","Mon-D3":"","Mon-D4":"","Tue-D1":"","Tue-D2":"","Tue-D3":"","Tue-D4":"","Wed-D1":"","Wed-D2":"當值","Wed-D3":"","Wed-D4":"","Thu-D1":"","Thu-D2":"","Thu-D3":"","Thu-D4":"","Fri-D1":"","Fri-D2":"","Fri-D3":"當值","Fri-D4":""}, subCountClass: 2, subCountDuty: 0, subCountTutorial: 0, absenceCount: 0, subLimit: 0, isActive: true },
-            { id: 2, name: "李小美", role: "non_ct", roleName: "非班主任", subject: "英文", classes: ["5A", "5B", "", "", "", "", "", ""],
+            { id: 2, name: "李小美", role: "non_ct", roleName: "非班主任", subject: "英文", subjects: ["英文", "", ""], classes: ["5A", "5B", "", "", "", "", "", ""],
               timetable: {"1-1":"英文","1-2":"英文","1-3":"","1-4":"","1-5":"英文","1-6":"英文","1-7":"英文","1-8":"英文","2-1":"","2-2":"英文","2-3":"英文","2-4":"英文","2-5":"英文","2-6":"英文","2-7":"英文","2-8":"英文","3-1":"英文","3-2":"","3-3":"英文","3-4":"英文","3-5":"英文","3-6":"英文","3-7":"英文","3-8":"英文","4-1":"英文","4-2":"英文","4-3":"英文","4-4":"英文","4-5":"","4-6":"英文","4-7":"英文","4-8":"英文","5-1":"英文","5-2":"英文","5-3":"英文","5-4":"英文","5-5":"英文","5-6":"","5-7":"英文","5-8":"英文","6-1":"英文","6-2":"英文","6-3":"英文","6-4":"英文","6-5":"英文","6-6":"英文","6-7":"","6-8":"英文","Mon-1":"","Mon-2":"英文","Mon-T":"英文","Tue-1":"英文","Tue-2":"","Tue-T":"","Wed-1":"英文","Wed-2":"英文","Wed-T":"","Thu-1":"英文","Thu-2":"","Thu-T":"英文","Fri-1":"","Fri-2":"英文","Fri-T":"","Mon-D1":"","Mon-D2":"","Mon-D3":"當值","Mon-D4":"","Tue-D1":"當值","Tue-D2":"","Tue-D3":"","Tue-D4":"","Wed-D1":"","Wed-D2":"","Wed-D3":"","Wed-D4":"當值","Thu-D1":"","Thu-D2":"","Thu-D3":"","Thu-D4":"","Fri-D1":"","Fri-D2":"當值","Fri-D3":"","Fri-D4":""}, subCountClass: 0, subCountDuty: 0, subCountTutorial: 0, absenceCount: 0, subLimit: 0, isActive: true },
-            { id: 3, name: "張志強", role: "senior", roleName: "主任", subject: "數學", classes: ["6A", "6B", "", "", "", "", "", ""],
+            { id: 3, name: "張志強", role: "senior", roleName: "主任", subject: "數學", subjects: ["數學", "", ""], classes: ["6A", "6B", "", "", "", "", "", ""],
               timetable: {"1-1":"","1-2":"數學","1-3":"數學","1-4":"數學","1-5":"數學","1-6":"數學","1-7":"數學","1-8":"數學","2-1":"數學","2-2":"","2-3":"數學","2-4":"數學","2-5":"數學","2-6":"數學","2-7":"數學","2-8":"數學","3-1":"數學","3-2":"數學","3-3":"數學","3-4":"數學","3-5":"","3-6":"數學","3-7":"數學","3-8":"數學","4-1":"","4-2":"數學","4-3":"數學","4-4":"數學","4-5":"數學","4-6":"數學","4-7":"數學","4-8":"數學","5-1":"數學","5-2":"","5-3":"數學","5-4":"數學","5-5":"數學","5-6":"數學","5-7":"數學","5-8":"數學","Mon-1":"數學","Mon-2":"","Mon-T":"","Tue-1":"","Tue-2":"數學","Tue-T":"數學","Wed-1":"數學","Wed-2":"數學","Wed-T":"","Thu-1":"數學","Thu-2":"","Thu-T":"數學","Fri-1":"","Fri-2":"數學","Fri-T":"","Mon-D1":"","Mon-D2":"","Mon-D3":"","Mon-D4":"當值","Tue-D1":"","Tue-D2":"","Tue-D3":"","Tue-D4":"","Wed-D1":"","Wed-D2":"","Wed-D3":"","Wed-D4":"","Thu-D1":"當值","Thu-D2":"","Thu-D3":"","Thu-D4":"","Fri-D1":"","Fri-D2":"","Fri-D3":"","Fri-D4":"當值"}, subCountClass: 1, subCountDuty: 0, subCountTutorial: 0, absenceCount: 0, subLimit: 0, isActive: true },
-            { id: 4, name: "王美玲", role: "ct", roleName: "班主任", subject: "通識", classes: ["4A", "5A", "6A", "", "", "", "", ""],
+            { id: 4, name: "王美玲", role: "ct", roleName: "班主任", subject: "通識", subjects: ["通識", "", ""], classes: ["4A", "5A", "6A", "", "", "", "", ""],
               timetable: {"2-3":"","2-4":"","4-8":"","6-1":"","1-1":"通識","1-2":"通識","1-3":"通識","1-4":"通識","1-5":"通識","1-6":"通識","1-7":"通識","1-8":"通識","2-1":"通識","2-2":"通識","2-5":"通識","2-6":"通識","2-7":"通識","2-8":"通識","Mon-1":"","Mon-2":"通識","Mon-T":"通識","Tue-1":"通識","Tue-2":"","Tue-T":"","Wed-1":"","Wed-2":"通識","Wed-T":"通識","Thu-1":"通識","Thu-2":"通識","Thu-T":"","Fri-1":"通識","Fri-2":"","Fri-T":"","Mon-D1":"","Mon-D2":"當值","Mon-D3":"","Mon-D4":"","Tue-D1":"","Tue-D2":"","Tue-D3":"當值","Tue-D4":"","Wed-D1":"當值","Wed-D2":"","Wed-D3":"","Wed-D4":"","Thu-D1":"","Thu-D2":"","Thu-D3":"","Thu-D4":"當值","Fri-D1":"","Fri-D2":"","Fri-D3":"","Fri-D4":""}, subCountClass: 3, subCountDuty: 0, subCountTutorial: 0, absenceCount: 0, subLimit: 0, isActive: true },
-            { id: 5, name: "劉偉國", role: "vp", roleName: "副校長", subject: "物理", classes: ["", "", "", "", "", "", "", ""],
+            { id: 5, name: "劉偉國", role: "vp", roleName: "副校長", subject: "物理", subjects: ["物理", "", ""], classes: ["", "", "", "", "", "", "", ""],
               timetable: {"1-1":"","1-2":"","1-3":"","1-4":"","1-5":"","1-6":"","1-7":"","1-8":"","2-1":"","3-1":"","2-2":"物理","2-3":"物理","3-2":"物理","3-3":"物理","Mon-1":"","Mon-2":"","Mon-T":"","Tue-1":"","Tue-2":"","Tue-T":"","Wed-1":"","Wed-2":"","Wed-T":"","Thu-1":"物理","Thu-2":"","Thu-T":"","Fri-1":"","Fri-2":"","Fri-T":"","Mon-D1":"","Mon-D2":"","Mon-D3":"","Mon-D4":"","Tue-D1":"","Tue-D2":"","Tue-D3":"","Tue-D4":"","Wed-D1":"","Wed-D2":"","Wed-D3":"","Wed-D4":"","Thu-D1":"","Thu-D2":"","Thu-D3":"","Thu-D4":"","Fri-D1":"","Fri-D2":"","Fri-D3":"","Fri-D4":""}, subCountClass: 0, subCountDuty: 0, subCountTutorial: 0, absenceCount: 0, subLimit: 5, isActive: true },
-            { id: 6, name: "黃嘉嘉", role: "ct", roleName: "班主任", subject: "歷史", classes: ["4B", "5B", "6B", "", "", "", "", ""],
+            { id: 6, name: "黃嘉嘉", role: "ct", roleName: "班主任", subject: "歷史", subjects: ["歷史", "", ""], classes: ["4B", "5B", "6B", "", "", "", "", ""],
               timetable: {"1-5":"","1-6":"","3-1":"","5-8":"","1-1":"歷史","1-2":"歷史","1-3":"歷史","1-4":"歷史","1-7":"歷史","1-8":"歷史","2-1":"歷史","2-2":"歷史","2-3":"歷史","2-4":"歷史","2-5":"歷史","2-6":"歷史","2-7":"歷史","2-8":"歷史","Mon-1":"歷史","Mon-2":"","Mon-T":"","Tue-1":"","Tue-2":"歷史","Tue-T":"歷史","Wed-1":"歷史","Wed-2":"","Wed-T":"","Thu-1":"","Thu-2":"歷史","Thu-T":"","Fri-1":"歷史","Fri-2":"","Fri-T":"歷史","Mon-D1":"","Mon-D2":"","Mon-D3":"","Mon-D4":"","Tue-D1":"","Tue-D2":"","Tue-D3":"","Tue-D4":"當值","Wed-D1":"","Wed-D2":"","Wed-D3":"","Wed-D4":"","Thu-D1":"","Thu-D2":"","Thu-D3":"當值","Thu-D4":"","Fri-D1":"當值","Fri-D2":"","Fri-D3":"","Fri-D4":""}, subCountClass: 1, subCountDuty: 0, subCountTutorial: 0, absenceCount: 0, subLimit: 0, isActive: true },
         ];
 
@@ -1142,24 +1167,44 @@
             const lines = text.trim().split('\n');
             if (lines.length < 2) return [];
             const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+            // Helper: split CSV line respecting quoted fields
+            function splitCsvLine(line) {
+                const result = [];
+                let current = '';
+                let inQuotes = false;
+                for (let i = 0; i < line.length; i++) {
+                    const ch = line[i];
+                    if (ch === '"') { inQuotes = !inQuotes; }
+                    else if (ch === ',' && !inQuotes) { result.push(current.trim()); current = ''; }
+                    else { current += ch; }
+                }
+                result.push(current.trim());
+                return result;
+            }
             return lines.slice(1).map(line => {
-                const cols = line.split(',');
+                const cols = splitCsvLine(line);
                 const obj = {};
                 headers.forEach((h, i) => { obj[h] = (cols[i] || '').trim(); });
                 let timetable = {};
                 try { timetable = JSON.parse(obj.timetablejson || '{}'); } catch(e) {}
+                let classes = [];
+                try { if (obj.classesjson || obj.classes) classes = JSON.parse(obj.classesjson || obj.classes); } catch(e) {}
+                if (!Array.isArray(classes)) classes = [];
+                while (classes.length < 8) classes.push('');
+                const subjects = (obj.subject || '').split('/').map(s => s.trim()).filter(s => s).slice(0, 3);
+                while (subjects.length < 3) subjects.push('');
                 return {
                     id: parseInt(obj.id) || Date.now() + Math.random(),
                     name: obj.name || '',
-                    role: obj.role || 'teacher',
+                    role: obj.role || 'non_ct',
                     roleName: obj.rolename || '',
                     subject: obj.subject || '',
-                    subjects: (obj.subject || '').split('/').map(s => s.trim()).filter(s => s).slice(0, 3),
-	                    timetable,
-	                    classes: obj.classes ? JSON.parse(obj.classes) : [],
-	                    subCountClass: parseInt(obj.subcountclass) || 0,
-	                    subCountDuty: parseInt(obj.subcountduty) || 0,
-	                    subCountTutorial: parseInt(obj.subcounttutorial) || 0,
+                    subjects: subjects,
+                    timetable,
+                    classes: classes.slice(0, 8),
+                    subCountClass: parseInt(obj.subcountclass) || 0,
+                    subCountDuty: parseInt(obj.subcountduty) || 0,
+                    subCountTutorial: parseInt(obj.subcounttutorial) || 0,
                     absenceCount: parseInt(obj.absencecount) || 0,
                     subLimit: parseInt(obj.sublimit) || 0,
                     isActive: obj.isactive !== 'false' && obj.isactive !== 'FALSE',
@@ -1239,7 +1284,7 @@
             const isEditMode = !!selectedTeacherId; // true when either existing teacher or new mode
             const [showEditModal, setShowEditModal] = useState(false);
             const [editingTeacher, setEditingTeacher] = useState(null);
-            const [editForm, setEditForm] = useState({ name: '', role: 'non_ct', roleName: '', subject: '', subjects: ['', '', ''], subLimit: 0, isActive: true, timetable: {} });
+            const [editForm, setEditForm] = useState({ name: '', role: 'non_ct', roleName: '', subject: '', subjects: ['', '', ''], classes: ['', '', '', '', '', '', '', ''], subLimit: 0, isActive: true, timetable: {} });
 
             // CSV 匯入狀態
             const [showCsvModal, setShowCsvModal] = useState(false);
@@ -1472,8 +1517,7 @@
                     const dateStr = formatDate(d);
                     const info = newCal[dateStr] || { cycleDay: null, isHoliday: false, holidayName: '', absences: [] };
                     if (isWeekend(d) || info.isHoliday) continue;
-                    info.cycleDay = currentDay;
-                    newCal[dateStr] = info;
+                    newCal[dateStr] = { ...info, cycleDay: currentDay };
                     currentDay = currentDay >= 6 ? 1 : currentDay + 1;
                 }
                 setCalendarData(newCal);
@@ -1733,8 +1777,8 @@
                         dailyPeriods: dailyPeriods + arrangedExtra,
                     };
                 }).sort((a, b) => {
-                    // 1. 代課積分（高優先，分數愈高排愈前）
-                    if (a.relevantSubCount !== b.relevantSubCount) return b.relevantSubCount - a.relevantSubCount;
+                    // 1. 代課積分（少優先，代課次數少的排前面）
+                    if (a.relevantSubCount !== b.relevantSubCount) return a.relevantSubCount - b.relevantSubCount;
                     
                     // 2. 職級排序（班主任/非班主任 1 > 主任 2 > 副校長 3）
                     if (a.rolePriority !== b.rolePriority) return a.rolePriority - b.rolePriority;
@@ -1758,7 +1802,7 @@
                     const bSubMatch = absentSubjects.some(s => s && bSubjects.includes(s)) ? 0 : 1;
                     return aSubMatch - bSubMatch;
                 });
-            }, [selectedAbsentee, teachers, subCycleDay, subWeekday, arrangedSlots, calendarData, subDate, substitutionLog]);
+            }, [selectedAbsentee, teachers, subCycleDay, subWeekday, arrangedSlots, calendarData, subDate, substitutionLog, absentSlots, absentReasons]);
 
             // ===== 自動安排 =====
             const autoAssignAll = useCallback((absentTeacherId, existingArrangements = {}) => {
@@ -1836,6 +1880,11 @@
                         // 不能有 D4 當值（D1/D2/D3 與 D4 互斥）
                         if (hasDutyAt(t.timetable, dutySlotKey(weekday, 'D4'))) return false;
                         if (tempArrangedIds[dutySlotKey(weekday, 'D4')] === t.id) return false;
+                        // Sub limit check
+                        if (t.subLimit > 0) {
+                            const totalSubs = (t.subCountClass || 0) + (t.subCountDuty || 0) + (t.subCountTutorial || 0);
+                            if (totalSubs >= t.subLimit) return false;
+                        }
                         return true;
                     }).map(t => {
                         const rolePriority = ROLE_PRIORITY[t.role] || 3;
@@ -1923,6 +1972,12 @@
                             }
                         }
 
+                        // Sub limit check
+                        if (t.subLimit > 0) {
+                            const totalSubs = (t.subCountClass || 0) + (t.subCountDuty || 0) + (t.subCountTutorial || 0);
+                            if (totalSubs >= t.subLimit) return false;
+                        }
+
                         return true;
                     }).map(t => {
                         const rolePriority = ROLE_PRIORITY[t.role] || 3;
@@ -1965,7 +2020,7 @@
                 });
 
                 return newArranged;
-            }, [teachers, subCycleDay, subWeekday, calendarData, subDate, absentSlots]);
+            }, [teachers, subCycleDay, subWeekday, calendarData, subDate, absentSlots, absentReasons, substitutionLog]);
 
             // ===== 選擇缺席老師 (Step 1 → Step 1.5: slot selection) =====
             const selectAbsentee = useCallback((teacherId) => {
@@ -2178,62 +2233,77 @@
                 const isReplacing = oldSubstituteId && oldSubstituteId !== substituteTeacher.id;
                 const wasConfirmed = existingArrangement && existingArrangement.status === 'confirmed';
 
-                // Update arranged slots
-                const newArranged = {
-                    ...arrangedSlots,
-                    [currentArrangingSlot]: {
+                // Update arranged slots - handle D1/D2/D3 group
+                const newArranged = { ...arrangedSlots };
+                _dutyGroupSlotKeys.forEach(groupSlotKey => {
+                    const groupAbsentSubject = getTeachingSubjectAt(absentTeacher.timetable, groupSlotKey);
+                    newArranged[groupSlotKey] = {
                         substituteId: substituteTeacher.id,
                         substituteName: substituteTeacher.name,
-                        subject: absentSubject || '當值',
-                        slotKey: currentArrangingSlot,
+                        subject: groupAbsentSubject || '當值',
+                        slotKey: groupSlotKey,
                         status: 'confirmed',
-                    }
-                };
+                    };
+                });
                 setArrangedSlots(newArranged);
 
-                // Handle logs
+                // Handle logs - for each slot in the duty group
                 let newLogs = [...substitutionLog];
-                if (isReplacing || wasConfirmed) {
-                    newLogs = newLogs.filter(log => !(log.date === subDate && log.slotKey === currentArrangingSlot && log.absent === absentTeacher.name));
-                }
-                const newLog = {
-                    id: Date.now(),
-                    date: subDate,
-                    slotKey: currentArrangingSlot,
-                    slotLabel: getSlotLabel(currentArrangingSlot),
-                    slotType: getSlotTypeLabel(currentArrangingSlot),
-                    absent: absentTeacher.name,
-                    absentSubject: absentSubject || '當值',
-                    substitute: substituteTeacher.name,
-                    substituteSubject: subSubject,
-                    role: substituteTeacher.roleName || substituteTeacher.role,
-                    reason: absentReasons[currentArrangingSlot] || 'sick',
-                };
-                newLogs = [...newLogs, newLog];
+                _dutyGroupSlotKeys.forEach(groupSlotKey => {
+                    const groupAbsentSubject = getTeachingSubjectAt(absentTeacher.timetable, groupSlotKey);
+                    const groupExisting = arrangedSlots[groupSlotKey];
+                    const groupOldSubId = groupExisting?.substituteId || null;
+                    const groupIsReplacing = groupOldSubId && groupOldSubId !== substituteTeacher.id;
+                    const groupWasConfirmed = groupExisting && groupExisting.status === 'confirmed';
+                    if (groupIsReplacing || groupWasConfirmed) {
+                        newLogs = newLogs.filter(log => !(log.date === subDate && log.slotKey === groupSlotKey && log.absent === absentTeacher.name));
+                    }
+                    newLogs.push({
+                        id: Date.now() + _dutyGroupSlotKeys.indexOf(groupSlotKey),
+                        date: subDate,
+                        slotKey: groupSlotKey,
+                        slotLabel: getSlotLabel(groupSlotKey),
+                        slotType: getSlotTypeLabel(groupSlotKey),
+                        absent: absentTeacher.name,
+                        absentSubject: groupAbsentSubject || '當值',
+                        substitute: substituteTeacher.name,
+                        substituteSubject: subSubject,
+                        role: substituteTeacher.roleName || substituteTeacher.role,
+                        sameSubject: !!(groupAbsentSubject && subSubject && groupAbsentSubject === subSubject),
+                        reason: absentReasons[groupSlotKey] || 'sick',
+                    });
+                });
                 setSubstitutionLog(newLogs);
 
-                // Update teacher sub counts (split by category)
+                // Update teacher sub counts (split by category) - count all group slots
                 let newTeachers = [...teachers];
-                if (isReplacing && oldSubstituteId) {
-                    newTeachers = newTeachers.map(t => {
-                        if (t.id !== oldSubstituteId) return t;
-                        const updated = { ...t };
-                        if (subCategory === 'class') updated.subCountClass = Math.max(0, (updated.subCountClass || 0) - 1);
-                        else if (subCategory === 'duty') updated.subCountDuty = Math.max(0, (updated.subCountDuty || 0) - 1);
-                        else if (subCategory === 'tutorial') updated.subCountTutorial = Math.max(0, (updated.subCountTutorial || 0) - 1);
-                        return updated;
-                    });
-                }
-                if (!wasConfirmed || isReplacing) {
-                    newTeachers = newTeachers.map(t => {
-                        if (t.id !== substituteTeacher.id) return t;
-                        const updated = { ...t };
-                        if (subCategory === 'class') updated.subCountClass = (updated.subCountClass || 0) + 1;
-                        else if (subCategory === 'duty') updated.subCountDuty = (updated.subCountDuty || 0) + 1;
-                        else if (subCategory === 'tutorial') updated.subCountTutorial = (updated.subCountTutorial || 0) + 1;
-                        return updated;
-                    });
-                }
+                _dutyGroupSlotKeys.forEach(groupSlotKey => {
+                    const groupSubCategory = getSubCountCategory(groupSlotKey);
+                    const groupExisting = arrangedSlots[groupSlotKey];
+                    const groupOldSubId = groupExisting?.substituteId || null;
+                    const groupIsReplacing = groupOldSubId && groupOldSubId !== substituteTeacher.id;
+                    const groupWasConfirmed = groupExisting && groupExisting.status === 'confirmed';
+                    if (groupIsReplacing && groupOldSubId) {
+                        newTeachers = newTeachers.map(t => {
+                            if (t.id !== groupOldSubId) return t;
+                            const updated = { ...t };
+                            if (groupSubCategory === 'class') updated.subCountClass = Math.max(0, (updated.subCountClass || 0) - 1);
+                            else if (groupSubCategory === 'duty') updated.subCountDuty = Math.max(0, (updated.subCountDuty || 0) - 1);
+                            else if (groupSubCategory === 'tutorial') updated.subCountTutorial = Math.max(0, (updated.subCountTutorial || 0) - 1);
+                            return updated;
+                        });
+                    }
+                    if (!groupWasConfirmed || groupIsReplacing) {
+                        newTeachers = newTeachers.map(t => {
+                            if (t.id !== substituteTeacher.id) return t;
+                            const updated = { ...t };
+                            if (groupSubCategory === 'class') updated.subCountClass = (updated.subCountClass || 0) + 1;
+                            else if (groupSubCategory === 'duty') updated.subCountDuty = (updated.subCountDuty || 0) + 1;
+                            else if (groupSubCategory === 'tutorial') updated.subCountTutorial = (updated.subCountTutorial || 0) + 1;
+                            return updated;
+                        });
+                    }
+                });
                 setTeachers(newTeachers);
 
                 // Update calendar data (deep copy to ensure React detects changes)
@@ -2244,25 +2314,26 @@
                 const newAbsentSlotsArr = Object.keys(absentSlots).filter(k => absentSlots[k]).map(slotKey => ({
                     slotKey, reason: absentReasons[slotKey] || 'sick',
                 }));
-                const newArrangement = {
-                    slotKey: currentArrangingSlot,
+                // Build arrangements for all group slots
+                const newGroupArrangements = _dutyGroupSlotKeys.map(groupSlotKey => ({
+                    slotKey: groupSlotKey,
                     substituteId: substituteTeacher.id,
                     substituteName: substituteTeacher.name,
-                    subject: absentSubject || '當值',
-                    reason: absentReasons[currentArrangingSlot] || 'sick',
-                };
+                    subject: getTeachingSubjectAt(absentTeacher.timetable, groupSlotKey) || '當值',
+                    reason: absentReasons[groupSlotKey] || 'sick',
+                }));
                 let newAbsences;
                 if (absIdx >= 0) {
                     const oldEntry = oldAbsences[absIdx];
-                    const filteredArrangements = (oldEntry.arrangements || []).filter(arr => arr.slotKey !== currentArrangingSlot);
+                    const filteredArrangements = (oldEntry.arrangements || []).filter(arr => !_dutyGroupSlotKeys.includes(arr.slotKey));
                     newAbsences = oldAbsences.map((a, i) => i === absIdx ? {
                         ...a, absentSlots: newAbsentSlotsArr, globalReason: globalAbsentReason,
-                        arrangements: [...filteredArrangements, newArrangement]
+                        arrangements: [...filteredArrangements, ...newGroupArrangements]
                     } : a);
                 } else {
                     newAbsences = [...oldAbsences, {
                         teacherId: selectedAbsentee, teacherName: absentTeacher.name,
-                        arrangements: [newArrangement], absentSlots: newAbsentSlotsArr, globalReason: globalAbsentReason
+                        arrangements: newGroupArrangements, absentSlots: newAbsentSlotsArr, globalReason: globalAbsentReason
                     }];
                 }
                 newCal[subDate] = { ...oldDateInfo, absences: newAbsences };
@@ -2271,11 +2342,12 @@
                 syncToSheets(newTeachers, newLogs, newCal);
 
                 const actionLabel = isReplacing ? '已更換' : '已安排';
-                addToast(`${actionLabel} ${substituteTeacher.name} 代替 ${getSlotLabel(currentArrangingSlot)}`, 'success');
+                const groupLabel = _dutyGroupSlotKeys.length > 1 ? _dutyGroupSlotKeys.map(k => getSlotLabel(k)).join(', ') : getSlotLabel(currentArrangingSlot);
+                addToast(`${actionLabel} ${substituteTeacher.name} 代替 ${groupLabel}`, 'success');
 
                 setCurrentArrangingSlot(null);
                 setSubStep(2);
-            }, [currentArrangingSlot, selectedAbsentee, teachers, substitutionLog, calendarData, subDate, subCycleDay, arrangedSlots, syncToSheets, addToast, absentSlots, absentReasons, globalAbsentReason]);
+            }, [currentArrangingSlot, selectedAbsentee, teachers, substitutionLog, calendarData, subDate, subCycleDay, subWeekday, arrangedSlots, syncToSheets, addToast, absentSlots, absentReasons, globalAbsentReason]);
 
             // ===== 確認全部自動推薦 =====
             const confirmAllAuto = useCallback(() => {
@@ -2310,6 +2382,7 @@
                     const absentSubject = getTeachingSubjectAt(absentTeacher.timetable, slotKey);
                     const subTeacher = newTeachers.find(t => t.id === arr.substituteId);
                     // Add log
+                    const _subSubject = subTeacher?.subject || '';
                     newLogs.push({
                         id: Date.now() + count,
                         date: subDate,
@@ -2319,8 +2392,9 @@
                         absent: absentTeacher.name,
                         absentSubject: absentSubject || '當值',
                         substitute: arr.substituteName,
-                        substituteSubject: subTeacher?.subject || '',
+                        substituteSubject: _subSubject,
                         role: subTeacher?.roleName || '',
+                        sameSubject: !!(absentSubject && _subSubject && absentSubject === _subSubject),
                         reason: absentReasons[slotKey] || 'sick',
                     });
 
@@ -2463,6 +2537,7 @@
                         const reason = s.reason || 'sick';
                         const reasonInfo = ABSENCE_REASON_MAP[reason];
                         if (!reasonInfo || !reasonInfo.deduct) return;
+                        if (reasonInfo.noSub) return; // 不需代課的課節不扣分，刪除時也不需恢復
                         const subCat = getSubCountCategory(s.slotKey);
                         if (subCat === 'class') classRestore++;
                         else if (subCat === 'duty') dutyRestore++;
@@ -2656,9 +2731,9 @@
             }, [csvPreview, teachers, substitutionLog, calendarData, syncToSheets, addToast]);
 
             const exportCsv = useCallback(() => {
-                const headers = 'id,name,role,roleName,subject,timetableJSON,subCountClass,subCountDuty,subCountTutorial,absenceCount,subLimit,isActive';
+                const headers = 'id,name,role,roleName,subject,timetableJSON,subCountClass,subCountDuty,subCountTutorial,absenceCount,subLimit,isActive,classesJSON';
                 const rows = teachers.map(t =>
-                    `${t.id},${t.name},${t.role},${t.roleName},${t.subject},"${JSON.stringify(t.timetable || {})}",${t.subCountClass||0},${t.subCountDuty||0},${t.subCountTutorial||0},${t.absenceCount||0},${t.subLimit},${t.isActive}`
+                    `${t.id},${t.name},${t.role},${t.roleName},${t.subject},"${JSON.stringify(t.timetable || {}).replace(/"/g, '""')}",${t.subCountClass||0},${t.subCountDuty||0},${t.subCountTutorial||0},${t.absenceCount||0},${t.subLimit},${t.isActive},"${JSON.stringify(t.classes || []).replace(/"/g, '""')}"`
                 );
                 const csv = [headers, ...rows].join('\n');
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -3806,7 +3881,7 @@
                                         statsData.teacherStats.map(t =>
                                             React.createElement('tr', { key: t.name },
                                                 React.createElement('td', { style: { fontWeight: 600 } }, t.name),
-                                                React.createElement('td', null, React.createElement(RoleTag, { role: t.role })),
+                                                React.createElement('td', null, React.createElement(RoleTag, { role: t.role, roleName: t.roleName })),
                                                 React.createElement('td', { style: { textAlign: 'center' } }, t.subCountClass),
                                                 React.createElement('td', { style: { textAlign: 'center' } }, t.subCountDuty),
                                                 React.createElement('td', { style: { textAlign: 'center' } }, t.subCountTutorial),
@@ -3845,7 +3920,7 @@
                                         [...statsData.teacherStats].sort((a, b) => b.absenceCount - a.absenceCount).filter(t => t.absenceCount > 0).map(t =>
                                             React.createElement('tr', { key: t.name },
                                                 React.createElement('td', { style: { fontWeight: 600 } }, t.name),
-                                                React.createElement('td', null, React.createElement(RoleTag, { role: t.role })),
+                                                React.createElement('td', null, React.createElement(RoleTag, { role: t.role, roleName: t.roleName })),
                                                 React.createElement('td', { style: { textAlign: 'center', fontWeight: 700, color: '#dc2626' } }, t.absenceCount),
                                                 React.createElement('td', { style: { minWidth: 200 } },
                                                     React.createElement('div', { style: { height: 20, background: '#fecaca', borderRadius: 4, overflow: 'hidden' } },
@@ -3876,7 +3951,7 @@
                                         React.createElement('p', null, '2. 職級優先：非班主任 = 班主任 > 主任 > 副校長 > 教學助理'),
                                         React.createElement('p', null, ''),
                                         React.createElement('p', null, '篩選條件：'),
-                                        React.createElement('p', null, '• 當天總節數（含當值+導修）不超過 6 節'),
+                                        React.createElement('p', null, '• 當天上午課節數（含代課）不超過 6 節'),
                                         React.createElement('p', null, '• 午膳當值與課前/小息/午息當值互斥'),
                                         React.createElement('p', null, '• 當天缺席的老師不會被推薦'),
                                         React.createElement('p', null, ''),
@@ -3948,8 +4023,6 @@
                         )
                     ),
 
-                    ),
-
                     // =============================================
                     // Toast 通知
                     // =============================================
@@ -3958,6 +4031,7 @@
                             React.createElement('div', { key: t.id, className: `toast toast-${t.type}` }, t.message)
                         )
                     )
+                )
                 );
             }
 
