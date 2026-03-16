@@ -860,6 +860,7 @@
                 String(t.absenceCount || 0),
                 String(t.subLimit), t.isActive ? 'TRUE' : 'FALSE',
                 JSON.stringify(t.classes || []),
+                String(t.absCountClass || 0), String(t.absCountDuty || 0), String(t.absCountTutorial || 0),
             ];
             });
         }
@@ -987,7 +988,7 @@
                     await gapi.client.sheets.spreadsheets.batchUpdate({ spreadsheetId: SPREADSHEET_ID, resource: { requests } });
                 }
                 const headerChecks = [
-                    { range: 'Teachers!A1:M1', cols: 13, data: [['id','name','role','roleName','subject','timetableJSON','subCountClass','subCountDuty','subCountTutorial','absenceCount','subLimit','isActive','classesJSON']] },
+                    { range: 'Teachers!A1:P1', cols: 16, data: [['id','name','role','roleName','subject','timetableJSON','subCountClass','subCountDuty','subCountTutorial','absenceCount','subLimit','isActive','classesJSON','absCountClass','absCountDuty','absCountTutorial']] },
                     { range: 'Logs!A1:L1', cols: 12, data: [['id','date','slotKey','slotLabel','slotType','absent','absentSubject','substitute','substituteSubject','role','sameSubject','reason']] },
                     { range: 'Calendar!A1:E1', cols: 5, data: [['date','cycleDay','isHoliday','holidayName','absences']] },
                 ];
@@ -1062,7 +1063,7 @@
 
         async function readAllData() {
             const [teachersResponse, logsResponse, calendarResponse] = await Promise.all([
-                gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Teachers!A2:M' }),
+                gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Teachers!A2:P' }),
                 gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Logs!A2:L' }),
                 gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Calendar!A2:E' }),
             ]);
@@ -1074,7 +1075,7 @@
         }
 
         async function writeAllData(teachers, logs, calendarData) {
-            const clearRanges = ['Teachers!A2:M10000', 'Logs!A2:L10000', 'Calendar!A2:E10000'];
+            const clearRanges = ['Teachers!A2:P10000', 'Logs!A2:L10000', 'Calendar!A2:E10000'];
             await gapi.client.sheets.spreadsheets.values.batchClear({ spreadsheetId: SPREADSHEET_ID, resource: { ranges: clearRanges } });
             const data = [];
             if (teachers.length > 0) data.push({ range: 'Teachers!A2', values: formatTeachersForSheet(teachers) });
@@ -1226,6 +1227,9 @@
                     subCountDuty: parseInt(obj.subcountduty) || 0,
                     subCountTutorial: parseInt(obj.subcounttutorial) || 0,
                     absenceCount: parseInt(obj.absencecount) || 0,
+                    absCountClass: parseInt(obj.abscountclass) || 0,
+                    absCountDuty: parseInt(obj.abscountduty) || 0,
+                    absCountTutorial: parseInt(obj.abscounttutorial) || 0,
                     subLimit: parseInt(obj.sublimit) || 0,
                     isActive: obj.isactive !== 'false' && obj.isactive !== 'FALSE',
                 };
@@ -1796,13 +1800,13 @@
                         if (dailySubs + 1 > t.subLimit) { console.log(`[代課篩選] 排除 ${t.name}: 每日代課已達上限 (今日已安排${dailySubs}節/${t.subLimit}節)`); return false; }
                     }
 
-                    console.log(`[代課篩選] 通過 ${t.name} (職級=${t.role}, 代課積分=${t.subCountClass}/${t.subCountDuty}/${t.subCountTutorial})`);
+                    console.log(`[代課篩選] 通過 ${t.name} (職級=${t.role}, 代課積分: 課堂=${(t.subCountClass||0)-(t.absCountClass||0)}, 導修=${(t.subCountTutorial||0)-(t.absCountTutorial||0)}, 當值=${(t.subCountDuty||0)-(t.absCountDuty||0)})`);
                     return true;
                 }).map(t => {
                     const rolePriority = ROLE_PRIORITY[t.role] || 3;
-                    const relevantSubCount = subCategory === 'class' ? (t.subCountClass || 0) :
-                                             subCategory === 'duty' ? (t.subCountDuty || 0) :
-                                             (t.subCountTutorial || 0);
+                    const relevantSubCount = subCategory === 'class' ? ((t.subCountClass || 0) - (t.absCountClass || 0)) :
+                                             subCategory === 'duty' ? ((t.subCountDuty || 0) - (t.absCountDuty || 0)) :
+                                             ((t.subCountTutorial || 0) - (t.absCountTutorial || 0));
                     const dailyPeriods = countTotalPeriodsForDay(t.timetable, amDay, weekday);
                     let arrangedExtra = 0;
                     Object.entries(arrangedSlots).forEach(([key, val]) => {
@@ -2224,6 +2228,9 @@
                         subCountClass: (t.subCountClass || 0) - classDeduct,
                         subCountDuty: (t.subCountDuty || 0) - dutyDeduct,
                         subCountTutorial: (t.subCountTutorial || 0) - tutorialDeduct,
+                        absCountClass: (t.absCountClass || 0) + classDeduct,
+                        absCountDuty: (t.absCountDuty || 0) + dutyDeduct,
+                        absCountTutorial: (t.absCountTutorial || 0) + tutorialDeduct,
                     };
                 });
                 setTeachers(newTeachers);
@@ -2631,6 +2638,9 @@
                         subCountClass: (t.subCountClass || 0) + classRestore,
                         subCountDuty: (t.subCountDuty || 0) + dutyRestore,
                         subCountTutorial: (t.subCountTutorial || 0) + tutorialRestore,
+                        absCountClass: Math.max(0, (t.absCountClass || 0) - classRestore),
+                        absCountDuty: Math.max(0, (t.absCountDuty || 0) - dutyRestore),
+                        absCountTutorial: Math.max(0, (t.absCountTutorial || 0) - tutorialRestore),
                     };
                 });
 
@@ -2862,31 +2872,14 @@
             // 統計資料
             // =============================================
             const statsData = useMemo(() => {
-                // 計算每位教師的缺席節數（分類）
-                const absenceSlotsByTeacher = {}; // teacherId -> { class: N, duty: N, tutorial: N }
-                Object.values(calendarData).forEach(dateInfo => {
-                    if (!dateInfo || !dateInfo.absences) return;
-                    dateInfo.absences.forEach(absence => {
-                        const tid = absence.teacherId;
-                        if (!absenceSlotsByTeacher[tid]) absenceSlotsByTeacher[tid] = { class: 0, duty: 0, tutorial: 0 };
-                        const slots = absence.absentSlots || absence.arrangements || [];
-                        slots.forEach(s => {
-                            const slotKey = s.slotKey;
-                            if (!slotKey) return;
-                            const reason = s.reason || absence.globalReason || 'sick';
-                            const reasonInfo = ABSENCE_REASON_MAP[reason];
-                            if (reasonInfo && reasonInfo.noSub) return; // 不需代課不計入
-                            const subCat = getSubCountCategory(slotKey);
-                            absenceSlotsByTeacher[tid][subCat] = (absenceSlotsByTeacher[tid][subCat] || 0) + 1;
-                        });
-                    });
-                });
-
+                // 缺席節數直接從 Teachers 表的 absCountClass/absCountDuty/absCountTutorial 欄位讀取
                 const teacherStats = teachers.map(t => {
-                    const absSlots = absenceSlotsByTeacher[t.id] || { class: 0, duty: 0, tutorial: 0 };
                     const subClass = t.subCountClass || 0;
                     const subDuty = t.subCountDuty || 0;
                     const subTutorial = t.subCountTutorial || 0;
+                    const absClass = t.absCountClass || 0;
+                    const absDuty = t.absCountDuty || 0;
+                    const absTutorial = t.absCountTutorial || 0;
                     return {
                         name: t.name, role: t.role, roleName: t.roleName,
                         subCountClass: subClass,
@@ -2894,14 +2887,14 @@
                         subCountTutorial: subTutorial,
                         totalSubCount: subClass + subDuty + subTutorial,
                         absenceCount: t.absenceCount || 0,
-                        absenceSlotsClass: absSlots.class,
-                        absenceSlotsDuty: absSlots.duty,
-                        absenceSlotsTutorial: absSlots.tutorial,
-                        totalAbsenceSlots: absSlots.class + absSlots.duty + absSlots.tutorial,
+                        absenceSlotsClass: absClass,
+                        absenceSlotsDuty: absDuty,
+                        absenceSlotsTutorial: absTutorial,
+                        totalAbsenceSlots: absClass + absDuty + absTutorial,
                         // 代課分數 = 代課節數 - 缺席節數
-                        scoreClass: subClass - absSlots.class,
-                        scoreDuty: subDuty - absSlots.duty,
-                        scoreTutorial: subTutorial - absSlots.tutorial,
+                        scoreClass: subClass - absClass,
+                        scoreDuty: subDuty - absDuty,
+                        scoreTutorial: subTutorial - absTutorial,
                     };
                 });
 
@@ -2920,7 +2913,7 @@
                     totalLogs: substitutionLog.length,
                     totalAbsenceSlots: teacherStats.reduce((s, t) => s + t.totalAbsenceSlots, 0),
                 };
-            }, [teachers, substitutionLog, calendarData]);
+            }, [teachers, substitutionLog]);
 
             // =============================================
             // 月曆資料
@@ -4205,7 +4198,10 @@
                                     React.createElement('div', { style: { fontSize: 13, color: '#475569', lineHeight: 1.8 } },
                                         React.createElement('p', null, '• 課堂代課次數（subCountClass）：上午課節 + 下午課節'),
                                         React.createElement('p', null, '• 當值代替次數（subCountDuty）：課前/小息/午息/午膳當值'),
-                                        React.createElement('p', null, '• 導修代課次數（subCountTutorial）：導修課時段')
+                                        React.createElement('p', null, '• 導修代課次數（subCountTutorial）：導修課時段'),
+                                        React.createElement('p', null, '• 課堂缺席節數（absCountClass）：上午課節 + 下午課節缺席'),
+                                        React.createElement('p', null, '• 當值缺席節數（absCountDuty）：當值時段缺席'),
+                                        React.createElement('p', null, '• 導修缺席節數（absCountTutorial）：導修課時段缺席')
                                     )
                                 ),
                                 React.createElement('div', { style: { padding: 16, background: '#f8fafc', borderRadius: 8 } },
