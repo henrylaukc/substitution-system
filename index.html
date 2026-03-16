@@ -789,6 +789,13 @@
                         timetable = JSON.parse(raw);
                     }
                 } catch(e) { timetable = {}; }
+                // 清理 timetable 值：將 null/undefined/非字串值正規化為空字串
+                Object.keys(timetable).forEach(k => {
+                    const v = timetable[k];
+                    if (v === null || v === undefined) { timetable[k] = ''; }
+                    else if (typeof v === 'string') { timetable[k] = v.trim(); }
+                    else { timetable[k] = String(v); }
+                });
                 // Support old format: if row has subCount at index 6 (old format had 9 columns)
                 // New format has 12 columns
                 const colCount = row.length;
@@ -838,21 +845,38 @@
         }
 
         function formatTeachersForSheet(teachers) {
-            return teachers.map(t => [
+            return teachers.map(t => {
+                // 清理 timetable：確保所有值都是字串，並移除 null/undefined 值
+                const cleanTT = {};
+                if (t.timetable) {
+                    Object.entries(t.timetable).forEach(([k, v]) => {
+                        cleanTT[k] = (v === null || v === undefined) ? '' : String(v).trim();
+                    });
+                }
+                return [
                 String(t.id), t.name, t.role, t.roleName, t.subject,
-                JSON.stringify(t.timetable || {}),
+                JSON.stringify(cleanTT),
                 String(t.subCountClass || 0), String(t.subCountDuty || 0), String(t.subCountTutorial || 0),
                 String(t.absenceCount || 0),
                 String(t.subLimit), t.isActive ? 'TRUE' : 'FALSE',
                 JSON.stringify(t.classes || []),
-            ]);
+            ];
+            });
         }
 
         function isSlotFree(timetable, slotKey) {
             // 若無課表，視為全空堂
             if (!timetable) return true;
-            // 若 key 不存在（未設定）或値為空字串，都視為空堂
-            return !(slotKey in timetable) || timetable[slotKey] === '';
+            // 若 key 不存在（未設定）、值為空字串、null、undefined、純空格，都視為空堂
+            if (!(slotKey in timetable)) return true;
+            const val = timetable[slotKey];
+            return !val || (typeof val === 'string' && val.trim() === '');
+        }
+
+        function _hasContent(timetable, key) {
+            if (!(key in timetable)) return false;
+            const val = timetable[key];
+            return !!val && (typeof val !== 'string' || val.trim() !== '');
         }
 
         function countTotalPeriodsForDay(timetable, amDay, weekday) {
@@ -860,29 +884,25 @@
             let total = 0;
             if (amDay) {
                 AM_PERIODS.forEach(p => {
-                    const k = amSlotKey(amDay, p);
-                    if (k in timetable && timetable[k] !== '') total++;
+                    if (_hasContent(timetable, amSlotKey(amDay, p))) total++;
                 });
             }
             if (weekday) {
                 PM_PERIODS.forEach(p => {
-                    const k = pmSlotKey(weekday, p);
-                    if (k in timetable && timetable[k] !== '') total++;
+                    if (_hasContent(timetable, pmSlotKey(weekday, p))) total++;
                 });
                 DUTY_SLOTS.forEach(d => {
-                    const k = dutySlotKey(weekday, d);
-                    if (k in timetable && timetable[k] !== '') total++;
+                    if (_hasContent(timetable, dutySlotKey(weekday, d))) total++;
                 });
                 // Tutorial
-                const tk = tutorialSlotKey(weekday);
-                if (tk in timetable && timetable[tk] !== '') total++;
+                if (_hasContent(timetable, tutorialSlotKey(weekday))) total++;
             }
             return total;
         }
 
         function getTeachingSubjectAt(timetable, slotKey) {
             if (!timetable) return null;
-            if (slotKey in timetable && timetable[slotKey] !== '') {
+            if (_hasContent(timetable, slotKey)) {
                 return timetable[slotKey];
             }
             return null;
@@ -890,7 +910,7 @@
 
         function hasDutyAt(timetable, slotKey) {
             if (!timetable) return false;
-            return slotKey in timetable && timetable[slotKey] !== '';
+            return _hasContent(timetable, slotKey);
         }
 
         // =============================================
@@ -1685,6 +1705,13 @@
 
                 console.log(`[代課篩選] slotKey=${slotKey}, slotType=${slotType}, amDay=${amDay}, weekday=${weekday}, 缺席老師=${absentTeacher?.name}`);
                 console.log(`[代課篩選] 缺席老師IDs:`, [...absentTeacherIds], '已安排同節:', [...arrangedSameSlotIds], '已確認同節:', [...alreadySubbedThisSlot]);
+                console.log(`[代課篩選] 在職老師數:`, teachers.filter(t => t.isActive).length, ', 總老師數:', teachers.length);
+                // 輸出每位老師在該 slot 的值，方便 debug
+                teachers.filter(t => t.isActive && t.id !== selectedAbsentee && !absentTeacherIds.has(t.id)).forEach(t => {
+                    const slotVal = t.timetable ? t.timetable[slotKey] : undefined;
+                    const free = slotType === 'duty' ? !hasDutyAt(t.timetable, slotKey) : isSlotFree(t.timetable, slotKey);
+                    console.log(`[代課篩選] ${t.name}: timetable[${slotKey}]=${JSON.stringify(slotVal)}, 空堂=${free}`);
+                });
 
                 return teachers.filter(t => {
                     if (t.id === selectedAbsentee) { console.log(`[代課篩選] 排除 ${t.name}: 是缺席老師`); return false; }
@@ -1709,8 +1736,7 @@
                     let amPeriods = 0;
                     if (amDay && t.timetable) {
                         AM_PERIODS.forEach(p => {
-                            const k = amSlotKey(amDay, p);
-                            if (k in t.timetable && t.timetable[k] !== '') amPeriods++;
+                            if (_hasContent(t.timetable, amSlotKey(amDay, p))) amPeriods++;
                         });
                     }
                     // Count how many AM sub slots this teacher is already arranged for today
@@ -1877,9 +1903,7 @@
                         // 不能已被安排到其他課節
                         const assignedCount = Object.values(tempArrangedIds).filter(v => v === t.id).length;
                         if (assignedCount > 0) return false;
-                        // 6節限制
-                        const dailyPeriods = countTotalPeriodsForDay(t.timetable, amDay, weekday);
-                        if (dailyPeriods + dutyGroupSlots.length > 6) return false;
+                        // Duty 不受 AM 6 節限制（duty 是當值，不是上課）
                         // 不能有 D4 當值（D1/D2/D3 與 D4 互斥）
                         if (hasDutyAt(t.timetable, dutySlotKey(weekday, 'D4'))) return false;
                         if (tempArrangedIds[dutySlotKey(weekday, 'D4')] === t.id) return false;
@@ -1952,14 +1976,21 @@
                             if (!isSlotFree(t.timetable, slot.slotKey)) return false;
                         }
 
-                        // Already assigned to another slot
+                        // Already assigned to another slot in this auto-assign session
                         const assignedSlots = Object.entries(tempArrangedIds).filter(([k, v]) => k !== slot.slotKey && v === t.id);
                         if (assignedSlots.length > 0) return false;
 
-                        // 6-period limit
-                        const dailyPeriods = countTotalPeriodsForDay(t.timetable, amDay, weekday);
-                        let arrangedExtra = Object.entries(tempArrangedIds).filter(([k, v]) => k !== slot.slotKey && v === t.id).length;
-                        if (dailyPeriods + arrangedExtra + 1 > 6) return false;
+                        // 6-period AM daily limit: only count AM periods (consistent with getRecommendationsForSlot)
+                        if (getSlotType(slot.slotKey) === 'am') {
+                            let amPeriods = 0;
+                            if (amDay && t.timetable) {
+                                AM_PERIODS.forEach(p => {
+                                    if (_hasContent(t.timetable, amSlotKey(amDay, p))) amPeriods++;
+                                });
+                            }
+                            let arrangedAmExtra = Object.entries(tempArrangedIds).filter(([k, v]) => k !== slot.slotKey && v === t.id && getSlotType(k) === 'am').length;
+                            if (amPeriods + arrangedAmExtra + 1 > 6) return false;
+                        }
 
                         // Duty mutex
                         if (slotType === 'duty' && weekday) {
@@ -2674,6 +2705,13 @@
                 const name = cleanInput(editForm.name);
                 if (!name) { addToast('請輸入教師名稱', 'warning'); return; }
                 const autoRoleName = ROLE_LABEL[editForm.role] || editForm.role;
+                // 清理 timetable 值
+                const cleanedTimetable = {};
+                if (editForm.timetable) {
+                    Object.entries(editForm.timetable).forEach(([k, v]) => {
+                        cleanedTimetable[k] = (v === null || v === undefined) ? '' : String(v).trim();
+                    });
+                }
                 let newTeachers;
                 if (editingTeacher) {
                     const subjectStr = (editForm.subjects || []).filter(s => s.trim()).join('/') || cleanInput(editForm.subject) || '';
@@ -2683,7 +2721,7 @@
 	                        subjects: (editForm.subjects || ['', '', '']).slice(0, 3),
 	                        classes: (editForm.classes || ['', '', '', '', '', '', '', '']).slice(0, 8),
 	                        subLimit: parseInt(editForm.subLimit) || 0,
-	                        isActive: editForm.isActive, timetable: editForm.timetable,
+	                        isActive: editForm.isActive, timetable: cleanedTimetable,
 	                    } : t);
                 } else {
                     const newSubjectStr = (editForm.subjects || []).filter(s => s.trim()).join('/') || cleanInput(editForm.subject) || '';
@@ -2692,7 +2730,7 @@
 	                        subject: newSubjectStr,
 	                        subjects: (editForm.subjects || ['', '', '']).slice(0, 3),
 	                        classes: (editForm.classes || ['', '', '', '', '', '', '', '']).slice(0, 8),
-	                        timetable: editForm.timetable,
+	                        timetable: cleanedTimetable,
 	                        subCountClass: 0, subCountDuty: 0, subCountTutorial: 0,
 	                        absenceCount: 0, subLimit: parseInt(editForm.subLimit) || 0, isActive: editForm.isActive,
 	                    };
@@ -3696,7 +3734,7 @@
                                                                     ...[1,2,3,4,5,6].map(d => {
                                                                         const key = `${d}-${p}`;
                                                                         const val = (editForm.timetable || {})[key] || '';
-                                                                        return React.createElement('td', { key: d, style: { padding: 2, border: '1px solid #e2e8f0', background: val === '' ? '#dbeafe' : '#dcfce7' } },
+                                                                        return React.createElement('td', { key: d, style: { padding: 2, border: '1px solid #e2e8f0', background: (!val || val.trim() === '') ? '#dbeafe' : '#dcfce7' } },
                                                                             React.createElement('input', {
                                                                                 type: 'text', style: { width: '100%', border: 'none', background: 'transparent', textAlign: 'center', fontSize: 11, padding: '2px 0' },
                                                                                 value: val,
