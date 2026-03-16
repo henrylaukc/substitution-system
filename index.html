@@ -1782,10 +1782,18 @@
                         }
                     }
 
-                    // Sub limit check
+                    // Sub limit check (每日代課上限：計算當天已安排的代課節數)
                     if (t.subLimit > 0) {
-                        const totalSubs = (t.subCountClass || 0) + (t.subCountDuty || 0) + (t.subCountTutorial || 0);
-                        if (totalSubs >= t.subLimit) { console.log(`[代課篩選] 排除 ${t.name}: 代課次數已達上限 (${totalSubs}/${t.subLimit})`); return false; }
+                        // 計算當天已確認的代課記錄數
+                        let dailySubs = 0;
+                        substitutionLog.forEach(log => {
+                            if (log.date === subDate && log.substitute === t.name) dailySubs++;
+                        });
+                        // 加上當前 session 中已安排的代課數（排除當前 slotKey）
+                        Object.entries(arrangedSlots).forEach(([key, val]) => {
+                            if (key !== slotKey && val && val.substituteId === t.id && (val.status === 'confirmed' || val.status === 'auto')) dailySubs++;
+                        });
+                        if (dailySubs + 1 > t.subLimit) { console.log(`[代課篩選] 排除 ${t.name}: 每日代課已達上限 (今日已安排${dailySubs}節/${t.subLimit}節)`); return false; }
                     }
 
                     console.log(`[代課篩選] 通過 ${t.name} (職級=${t.role}, 代課積分=${t.subCountClass}/${t.subCountDuty}/${t.subCountTutorial})`);
@@ -1907,10 +1915,16 @@
                         // 不能有 D4 當值（D1/D2/D3 與 D4 互斥）
                         if (hasDutyAt(t.timetable, dutySlotKey(weekday, 'D4'))) return false;
                         if (tempArrangedIds[dutySlotKey(weekday, 'D4')] === t.id) return false;
-                        // Sub limit check
+                        // Sub limit check (每日代課上限)
                         if (t.subLimit > 0) {
-                            const totalSubs = (t.subCountClass || 0) + (t.subCountDuty || 0) + (t.subCountTutorial || 0);
-                            if (totalSubs >= t.subLimit) return false;
+                            let dailySubs = 0;
+                            substitutionLog.forEach(log => {
+                                if (log.date === subDate && log.substitute === t.name) dailySubs++;
+                            });
+                            Object.entries(tempArrangedIds).forEach(([k, v]) => {
+                                if (v === t.id) dailySubs++;
+                            });
+                            if (dailySubs + dutyGroupSlots.length > t.subLimit) return false;
                         }
                         return true;
                     }).map(t => {
@@ -2006,10 +2020,16 @@
                             }
                         }
 
-                        // Sub limit check
+                        // Sub limit check (每日代課上限)
                         if (t.subLimit > 0) {
-                            const totalSubs = (t.subCountClass || 0) + (t.subCountDuty || 0) + (t.subCountTutorial || 0);
-                            if (totalSubs >= t.subLimit) return false;
+                            let dailySubs = 0;
+                            substitutionLog.forEach(log => {
+                                if (log.date === subDate && log.substitute === t.name) dailySubs++;
+                            });
+                            Object.entries(tempArrangedIds).forEach(([k, v]) => {
+                                if (v === t.id) dailySubs++;
+                            });
+                            if (dailySubs + 1 > t.subLimit) return false;
                         }
 
                         return true;
