@@ -1291,6 +1291,9 @@
             const [csvData, setCsvData] = useState('');
             const [csvPreview, setCsvPreview] = useState([]);
 
+            // 統計頁面切換
+            const [statsTab, setStatsTab] = useState('class'); // 'class' | 'tutorial' | 'duty'
+
             // 記錄篩選
             const [logFilter, setLogFilter] = useState('');
 
@@ -2801,18 +2804,65 @@
             // 統計資料
             // =============================================
             const statsData = useMemo(() => {
-                const teacherStats = teachers.map(t => ({
-                    name: t.name, role: t.role, roleName: t.roleName,
-                    subCountClass: t.subCountClass || 0,
-                    subCountDuty: t.subCountDuty || 0,
-                    subCountTutorial: t.subCountTutorial || 0,
-                    totalSubCount: (t.subCountClass || 0) + (t.subCountDuty || 0) + (t.subCountTutorial || 0),
-                    absenceCount: t.absenceCount || 0,
-                })).sort((a, b) => b.totalSubCount - a.totalSubCount);
-                const maxCount = Math.max(...teacherStats.map(t => t.totalSubCount), 1);
-                const maxAbsence = Math.max(...teacherStats.map(t => t.absenceCount), 1);
-                return { teacherStats, maxCount, maxAbsence, totalLogs: substitutionLog.length };
-            }, [teachers, substitutionLog]);
+                // 計算每位教師的缺席節數（分類）
+                const absenceSlotsByTeacher = {}; // teacherId -> { class: N, duty: N, tutorial: N }
+                Object.values(calendarData).forEach(dateInfo => {
+                    if (!dateInfo || !dateInfo.absences) return;
+                    dateInfo.absences.forEach(absence => {
+                        const tid = absence.teacherId;
+                        if (!absenceSlotsByTeacher[tid]) absenceSlotsByTeacher[tid] = { class: 0, duty: 0, tutorial: 0 };
+                        const slots = absence.absentSlots || absence.arrangements || [];
+                        slots.forEach(s => {
+                            const slotKey = s.slotKey;
+                            if (!slotKey) return;
+                            const reason = s.reason || absence.globalReason || 'sick';
+                            const reasonInfo = ABSENCE_REASON_MAP[reason];
+                            if (reasonInfo && reasonInfo.noSub) return; // 不需代課不計入
+                            const subCat = getSubCountCategory(slotKey);
+                            absenceSlotsByTeacher[tid][subCat] = (absenceSlotsByTeacher[tid][subCat] || 0) + 1;
+                        });
+                    });
+                });
+
+                const teacherStats = teachers.map(t => {
+                    const absSlots = absenceSlotsByTeacher[t.id] || { class: 0, duty: 0, tutorial: 0 };
+                    const subClass = t.subCountClass || 0;
+                    const subDuty = t.subCountDuty || 0;
+                    const subTutorial = t.subCountTutorial || 0;
+                    return {
+                        name: t.name, role: t.role, roleName: t.roleName,
+                        subCountClass: subClass,
+                        subCountDuty: subDuty,
+                        subCountTutorial: subTutorial,
+                        totalSubCount: subClass + subDuty + subTutorial,
+                        absenceCount: t.absenceCount || 0,
+                        absenceSlotsClass: absSlots.class,
+                        absenceSlotsDuty: absSlots.duty,
+                        absenceSlotsTutorial: absSlots.tutorial,
+                        totalAbsenceSlots: absSlots.class + absSlots.duty + absSlots.tutorial,
+                        // 代課分數 = 代課節數 - 缺席節數
+                        scoreClass: subClass - absSlots.class,
+                        scoreDuty: subDuty - absSlots.duty,
+                        scoreTutorial: subTutorial - absSlots.tutorial,
+                    };
+                });
+
+                // 各類別的最大值（用於圖表比例）
+                const maxClassSub = Math.max(...teacherStats.map(t => t.subCountClass), 1);
+                const maxClassAbs = Math.max(...teacherStats.map(t => t.absenceSlotsClass), 1);
+                const maxDutySub = Math.max(...teacherStats.map(t => t.subCountDuty), 1);
+                const maxDutyAbs = Math.max(...teacherStats.map(t => t.absenceSlotsDuty), 1);
+                const maxTutorialSub = Math.max(...teacherStats.map(t => t.subCountTutorial), 1);
+                const maxTutorialAbs = Math.max(...teacherStats.map(t => t.absenceSlotsTutorial), 1);
+                const maxBar = Math.max(maxClassSub, maxClassAbs, maxDutySub, maxDutyAbs, maxTutorialSub, maxTutorialAbs, 1);
+
+                return {
+                    teacherStats,
+                    maxBar,
+                    totalLogs: substitutionLog.length,
+                    totalAbsenceSlots: teacherStats.reduce((s, t) => s + t.totalAbsenceSlots, 0),
+                };
+            }, [teachers, substitutionLog, calendarData]);
 
             // =============================================
             // 月曆資料
@@ -3846,7 +3896,9 @@
                     // =============================================
                     activeTab === 'stats' && React.createElement('div', null,
                         React.createElement('div', { className: 'card' },
-                            React.createElement('h2', { style: { fontSize: 22, fontWeight: 700, marginBottom: 16 } }, '統計概覽'),
+                            React.createElement('h2', { style: { fontSize: 22, fontWeight: 700, marginBottom: 16 } }, '代課分數統計'),
+
+                            // 概覽卡片
                             React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 24 } },
                                 React.createElement('div', { style: { padding: 16, background: '#eff6ff', borderRadius: 8, textAlign: 'center' } },
                                     React.createElement('div', { style: { fontSize: 28, fontWeight: 700, color: '#2563eb' } }, statsData.totalLogs),
@@ -3857,82 +3909,206 @@
                                     React.createElement('div', { style: { fontSize: 13, color: '#64748b' } }, '在職教師')
                                 ),
                                 React.createElement('div', { style: { padding: 16, background: '#fef2f2', borderRadius: 8, textAlign: 'center' } },
-                                    React.createElement('div', { style: { fontSize: 28, fontWeight: 700, color: '#dc2626' } }, teachers.reduce((sum, t) => sum + (t.absenceCount || 0), 0)),
-                                    React.createElement('div', { style: { fontSize: 13, color: '#64748b' } }, '總缺席次數')
+                                    React.createElement('div', { style: { fontSize: 28, fontWeight: 700, color: '#dc2626' } }, statsData.totalAbsenceSlots),
+                                    React.createElement('div', { style: { fontSize: 13, color: '#64748b' } }, '總缺席節數')
                                 )
                             ),
 
-                            // 代課次數統計圖
-                            React.createElement('h3', { style: { fontSize: 16, fontWeight: 600, marginBottom: 12 } }, '代課次數統計（分類）'),
-                            React.createElement('div', { style: { overflowX: 'auto', marginBottom: 24 } },
-                                React.createElement('table', { className: 'data-table', style: { fontSize: 14 } },
-                                    React.createElement('thead', null,
-                                        React.createElement('tr', null,
-                                            React.createElement('th', null, '教師'),
-                                            React.createElement('th', null, '職級'),
-                                            React.createElement('th', { style: { textAlign: 'center' } }, '課堂代課'),
-                                            React.createElement('th', { style: { textAlign: 'center' } }, '當值代替'),
-                                            React.createElement('th', { style: { textAlign: 'center' } }, '導修代課'),
-                                            React.createElement('th', { style: { textAlign: 'center' } }, '合計'),
-                                            React.createElement('th', null, '圖表')
-                                        )
-                                    ),
-                                    React.createElement('tbody', null,
-                                        statsData.teacherStats.map(t =>
-                                            React.createElement('tr', { key: t.name },
-                                                React.createElement('td', { style: { fontWeight: 600 } }, t.name),
-                                                React.createElement('td', null, React.createElement(RoleTag, { role: t.role, roleName: t.roleName })),
-                                                React.createElement('td', { style: { textAlign: 'center' } }, t.subCountClass),
-                                                React.createElement('td', { style: { textAlign: 'center' } }, t.subCountDuty),
-                                                React.createElement('td', { style: { textAlign: 'center' } }, t.subCountTutorial),
-                                                React.createElement('td', { style: { textAlign: 'center', fontWeight: 700 } }, t.totalSubCount),
-                                                React.createElement('td', { style: { minWidth: 200 } },
-                                                    React.createElement('div', { style: { display: 'flex', gap: 1, height: 20, borderRadius: 4, overflow: 'hidden' } },
-                                                        t.subCountClass > 0 && React.createElement('div', { style: { width: `${(t.subCountClass / statsData.maxCount) * 100}%`, background: '#3b82f6', minWidth: 4 }, title: `課堂 ${t.subCountClass}` }),
-                                                        t.subCountDuty > 0 && React.createElement('div', { style: { width: `${(t.subCountDuty / statsData.maxCount) * 100}%`, background: '#8b5cf6', minWidth: 4 }, title: `當值 ${t.subCountDuty}` }),
-                                                        t.subCountTutorial > 0 && React.createElement('div', { style: { width: `${(t.subCountTutorial / statsData.maxCount) * 100}%`, background: '#0891b2', minWidth: 4 }, title: `導修 ${t.subCountTutorial}` })
+                            // 三個切換按鈕
+                            React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' } },
+                                React.createElement('button', {
+                                    className: 'btn' + (statsTab === 'class' ? ' btn-primary' : ''),
+                                    style: statsTab === 'class' ? { background: '#2563eb', color: 'white', fontWeight: 700, padding: '10px 20px', fontSize: 14 } : { padding: '10px 20px', fontSize: 14, background: '#f1f5f9', border: '1px solid #e2e8f0' },
+                                    onClick: () => setStatsTab('class')
+                                }, '📘 課堂代課（每節30分鐘）'),
+                                React.createElement('button', {
+                                    className: 'btn' + (statsTab === 'tutorial' ? ' btn-primary' : ''),
+                                    style: statsTab === 'tutorial' ? { background: '#0891b2', color: 'white', fontWeight: 700, padding: '10px 20px', fontSize: 14 } : { padding: '10px 20px', fontSize: 14, background: '#f1f5f9', border: '1px solid #e2e8f0' },
+                                    onClick: () => setStatsTab('tutorial')
+                                }, '📗 導修代課（每節20分鐘）'),
+                                React.createElement('button', {
+                                    className: 'btn' + (statsTab === 'duty' ? ' btn-primary' : ''),
+                                    style: statsTab === 'duty' ? { background: '#7c3aed', color: 'white', fontWeight: 700, padding: '10px 20px', fontSize: 14 } : { padding: '10px 20px', fontSize: 14, background: '#f1f5f9', border: '1px solid #e2e8f0' },
+                                    onClick: () => setStatsTab('duty')
+                                }, '📙 當值代課')
+                            ),
+
+                            // 圖例
+                            React.createElement('div', { style: { display: 'flex', gap: 16, marginBottom: 16, fontSize: 13 } },
+                                React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 4 } },
+                                    React.createElement('span', { style: { width: 12, height: 12, background: '#3b82f6', borderRadius: 2, display: 'inline-block' } }),
+                                    '代課節數'
+                                ),
+                                React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 4 } },
+                                    React.createElement('span', { style: { width: 12, height: 12, background: '#ef4444', borderRadius: 2, display: 'inline-block' } }),
+                                    '缺席節數'
+                                ),
+                                React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8, fontSize: 12, color: '#64748b' } },
+                                    '代課分數 = 代課節數 − 缺席節數'
+                                )
+                            ),
+
+                            // 表格 A: 課堂代課
+                            statsTab === 'class' && (() => {
+                                const sorted = [...statsData.teacherStats].sort((a, b) => b.scoreClass - a.scoreClass);
+                                const maxSub = Math.max(...sorted.map(t => t.subCountClass), 1);
+                                const maxAbs = Math.max(...sorted.map(t => t.absenceSlotsClass), 1);
+                                const maxVal = Math.max(maxSub, maxAbs, 1);
+                                return React.createElement('div', { style: { overflowX: 'auto' } },
+                                    React.createElement('table', { className: 'data-table', style: { fontSize: 14 } },
+                                        React.createElement('thead', null,
+                                            React.createElement('tr', null,
+                                                React.createElement('th', null, '教師'),
+                                                React.createElement('th', null, '職級'),
+                                                React.createElement('th', { style: { textAlign: 'center' } }, '代課節數'),
+                                                React.createElement('th', { style: { textAlign: 'center' } }, '缺席節數'),
+                                                React.createElement('th', { style: { textAlign: 'center' } }, '代課分數'),
+                                                React.createElement('th', { style: { minWidth: 240 } }, '圖表')
+                                            )
+                                        ),
+                                        React.createElement('tbody', null,
+                                            sorted.map(t =>
+                                                React.createElement('tr', { key: t.name },
+                                                    React.createElement('td', { style: { fontWeight: 600, whiteSpace: 'nowrap' } },
+                                                        t.name,
+                                                        React.createElement('span', { style: { marginLeft: 8, fontWeight: 700, fontSize: 13, color: t.scoreClass > 0 ? '#2563eb' : t.scoreClass < 0 ? '#dc2626' : '#64748b' } }, t.scoreClass > 0 ? `+${t.scoreClass}` : String(t.scoreClass))
+                                                    ),
+                                                    React.createElement('td', null, React.createElement(RoleTag, { role: t.role, roleName: t.roleName })),
+                                                    React.createElement('td', { style: { textAlign: 'center', fontWeight: 600, color: '#2563eb' } }, t.subCountClass),
+                                                    React.createElement('td', { style: { textAlign: 'center', fontWeight: 600, color: '#dc2626' } }, t.absenceSlotsClass),
+                                                    React.createElement('td', { style: { textAlign: 'center', fontWeight: 700, fontSize: 16, color: t.scoreClass > 0 ? '#2563eb' : t.scoreClass < 0 ? '#dc2626' : '#64748b' } }, t.scoreClass > 0 ? `+${t.scoreClass}` : String(t.scoreClass)),
+                                                    React.createElement('td', { style: { minWidth: 240 } },
+                                                        React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 3 } },
+                                                            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                                                                React.createElement('span', { style: { fontSize: 10, color: '#64748b', width: 16, textAlign: 'right' } }, '代'),
+                                                                React.createElement('div', { style: { flex: 1, height: 14, background: '#e2e8f0', borderRadius: 4, overflow: 'hidden' } },
+                                                                    React.createElement('div', { style: { height: '100%', width: `${(t.subCountClass / maxVal) * 100}%`, background: '#3b82f6', borderRadius: 4, transition: 'width 0.3s' } })
+                                                                ),
+                                                                React.createElement('span', { style: { fontSize: 11, fontWeight: 600, color: '#2563eb', width: 20, textAlign: 'right' } }, t.subCountClass)
+                                                            ),
+                                                            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                                                                React.createElement('span', { style: { fontSize: 10, color: '#64748b', width: 16, textAlign: 'right' } }, '缺'),
+                                                                React.createElement('div', { style: { flex: 1, height: 14, background: '#e2e8f0', borderRadius: 4, overflow: 'hidden' } },
+                                                                    React.createElement('div', { style: { height: '100%', width: `${(t.absenceSlotsClass / maxVal) * 100}%`, background: '#ef4444', borderRadius: 4, transition: 'width 0.3s' } })
+                                                                ),
+                                                                React.createElement('span', { style: { fontSize: 11, fontWeight: 600, color: '#dc2626', width: 20, textAlign: 'right' } }, t.absenceSlotsClass)
+                                                            )
+                                                        )
                                                     )
                                                 )
                                             )
                                         )
                                     )
-                                )
-                            ),
-                            React.createElement('div', { style: { display: 'flex', gap: 16, marginBottom: 24, fontSize: 13 } },
-                                React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 4 } }, React.createElement('span', { style: { width: 12, height: 12, background: '#3b82f6', borderRadius: 2, display: 'inline-block' } }), '課堂代課'),
-                                React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 4 } }, React.createElement('span', { style: { width: 12, height: 12, background: '#8b5cf6', borderRadius: 2, display: 'inline-block' } }), '當值代替'),
-                                React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 4 } }, React.createElement('span', { style: { width: 12, height: 12, background: '#0891b2', borderRadius: 2, display: 'inline-block' } }), '導修代課')
-                            ),
+                                );
+                            })(),
 
-                            // 缺席次數統計
-                            React.createElement('h3', { style: { fontSize: 16, fontWeight: 600, marginBottom: 12 } }, '缺席次數統計'),
-                            React.createElement('div', { style: { overflowX: 'auto' } },
-                                React.createElement('table', { className: 'data-table', style: { fontSize: 14 } },
-                                    React.createElement('thead', null,
-                                        React.createElement('tr', null,
-                                            React.createElement('th', null, '教師'),
-                                            React.createElement('th', null, '職級'),
-                                            React.createElement('th', { style: { textAlign: 'center' } }, '缺席次數'),
-                                            React.createElement('th', null, '圖表')
-                                        )
-                                    ),
-                                    React.createElement('tbody', null,
-                                        [...statsData.teacherStats].sort((a, b) => b.absenceCount - a.absenceCount).filter(t => t.absenceCount > 0).map(t =>
-                                            React.createElement('tr', { key: t.name },
-                                                React.createElement('td', { style: { fontWeight: 600 } }, t.name),
-                                                React.createElement('td', null, React.createElement(RoleTag, { role: t.role, roleName: t.roleName })),
-                                                React.createElement('td', { style: { textAlign: 'center', fontWeight: 700, color: '#dc2626' } }, t.absenceCount),
-                                                React.createElement('td', { style: { minWidth: 200 } },
-                                                    React.createElement('div', { style: { height: 20, background: '#fecaca', borderRadius: 4, overflow: 'hidden' } },
-                                                        React.createElement('div', { style: { height: '100%', width: `${(t.absenceCount / statsData.maxAbsence) * 100}%`, background: '#ef4444', borderRadius: 4 } })
+                            // 表格 B: 導修代課
+                            statsTab === 'tutorial' && (() => {
+                                const sorted = [...statsData.teacherStats].sort((a, b) => b.scoreTutorial - a.scoreTutorial);
+                                const maxSub = Math.max(...sorted.map(t => t.subCountTutorial), 1);
+                                const maxAbs = Math.max(...sorted.map(t => t.absenceSlotsTutorial), 1);
+                                const maxVal = Math.max(maxSub, maxAbs, 1);
+                                return React.createElement('div', { style: { overflowX: 'auto' } },
+                                    React.createElement('table', { className: 'data-table', style: { fontSize: 14 } },
+                                        React.createElement('thead', null,
+                                            React.createElement('tr', null,
+                                                React.createElement('th', null, '教師'),
+                                                React.createElement('th', null, '職級'),
+                                                React.createElement('th', { style: { textAlign: 'center' } }, '代課節數'),
+                                                React.createElement('th', { style: { textAlign: 'center' } }, '缺席節數'),
+                                                React.createElement('th', { style: { textAlign: 'center' } }, '代課分數'),
+                                                React.createElement('th', { style: { minWidth: 240 } }, '圖表')
+                                            )
+                                        ),
+                                        React.createElement('tbody', null,
+                                            sorted.map(t =>
+                                                React.createElement('tr', { key: t.name },
+                                                    React.createElement('td', { style: { fontWeight: 600, whiteSpace: 'nowrap' } },
+                                                        t.name,
+                                                        React.createElement('span', { style: { marginLeft: 8, fontWeight: 700, fontSize: 13, color: t.scoreTutorial > 0 ? '#0891b2' : t.scoreTutorial < 0 ? '#dc2626' : '#64748b' } }, t.scoreTutorial > 0 ? `+${t.scoreTutorial}` : String(t.scoreTutorial))
+                                                    ),
+                                                    React.createElement('td', null, React.createElement(RoleTag, { role: t.role, roleName: t.roleName })),
+                                                    React.createElement('td', { style: { textAlign: 'center', fontWeight: 600, color: '#0891b2' } }, t.subCountTutorial),
+                                                    React.createElement('td', { style: { textAlign: 'center', fontWeight: 600, color: '#dc2626' } }, t.absenceSlotsTutorial),
+                                                    React.createElement('td', { style: { textAlign: 'center', fontWeight: 700, fontSize: 16, color: t.scoreTutorial > 0 ? '#0891b2' : t.scoreTutorial < 0 ? '#dc2626' : '#64748b' } }, t.scoreTutorial > 0 ? `+${t.scoreTutorial}` : String(t.scoreTutorial)),
+                                                    React.createElement('td', { style: { minWidth: 240 } },
+                                                        React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 3 } },
+                                                            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                                                                React.createElement('span', { style: { fontSize: 10, color: '#64748b', width: 16, textAlign: 'right' } }, '代'),
+                                                                React.createElement('div', { style: { flex: 1, height: 14, background: '#e2e8f0', borderRadius: 4, overflow: 'hidden' } },
+                                                                    React.createElement('div', { style: { height: '100%', width: `${(t.subCountTutorial / maxVal) * 100}%`, background: '#3b82f6', borderRadius: 4, transition: 'width 0.3s' } })
+                                                                ),
+                                                                React.createElement('span', { style: { fontSize: 11, fontWeight: 600, color: '#0891b2', width: 20, textAlign: 'right' } }, t.subCountTutorial)
+                                                            ),
+                                                            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                                                                React.createElement('span', { style: { fontSize: 10, color: '#64748b', width: 16, textAlign: 'right' } }, '缺'),
+                                                                React.createElement('div', { style: { flex: 1, height: 14, background: '#e2e8f0', borderRadius: 4, overflow: 'hidden' } },
+                                                                    React.createElement('div', { style: { height: '100%', width: `${(t.absenceSlotsTutorial / maxVal) * 100}%`, background: '#ef4444', borderRadius: 4, transition: 'width 0.3s' } })
+                                                                ),
+                                                                React.createElement('span', { style: { fontSize: 11, fontWeight: 600, color: '#dc2626', width: 20, textAlign: 'right' } }, t.absenceSlotsTutorial)
+                                                            )
+                                                        )
                                                     )
                                                 )
                                             )
                                         )
                                     )
-                                )
-                            ),
-                            statsData.teacherStats.filter(t => t.absenceCount > 0).length === 0 && React.createElement('div', { style: { padding: 20, textAlign: 'center', color: '#94a3b8' } }, '暫無缺席記錄')
+                                );
+                            })(),
+
+                            // 表格 C: 當值代課
+                            statsTab === 'duty' && (() => {
+                                const sorted = [...statsData.teacherStats].sort((a, b) => b.scoreDuty - a.scoreDuty);
+                                const maxSub = Math.max(...sorted.map(t => t.subCountDuty), 1);
+                                const maxAbs = Math.max(...sorted.map(t => t.absenceSlotsDuty), 1);
+                                const maxVal = Math.max(maxSub, maxAbs, 1);
+                                return React.createElement('div', { style: { overflowX: 'auto' } },
+                                    React.createElement('table', { className: 'data-table', style: { fontSize: 14 } },
+                                        React.createElement('thead', null,
+                                            React.createElement('tr', null,
+                                                React.createElement('th', null, '教師'),
+                                                React.createElement('th', null, '職級'),
+                                                React.createElement('th', { style: { textAlign: 'center' } }, '代課節數'),
+                                                React.createElement('th', { style: { textAlign: 'center' } }, '缺席節數'),
+                                                React.createElement('th', { style: { textAlign: 'center' } }, '代課分數'),
+                                                React.createElement('th', { style: { minWidth: 240 } }, '圖表')
+                                            )
+                                        ),
+                                        React.createElement('tbody', null,
+                                            sorted.map(t =>
+                                                React.createElement('tr', { key: t.name },
+                                                    React.createElement('td', { style: { fontWeight: 600, whiteSpace: 'nowrap' } },
+                                                        t.name,
+                                                        React.createElement('span', { style: { marginLeft: 8, fontWeight: 700, fontSize: 13, color: t.scoreDuty > 0 ? '#7c3aed' : t.scoreDuty < 0 ? '#dc2626' : '#64748b' } }, t.scoreDuty > 0 ? `+${t.scoreDuty}` : String(t.scoreDuty))
+                                                    ),
+                                                    React.createElement('td', null, React.createElement(RoleTag, { role: t.role, roleName: t.roleName })),
+                                                    React.createElement('td', { style: { textAlign: 'center', fontWeight: 600, color: '#7c3aed' } }, t.subCountDuty),
+                                                    React.createElement('td', { style: { textAlign: 'center', fontWeight: 600, color: '#dc2626' } }, t.absenceSlotsDuty),
+                                                    React.createElement('td', { style: { textAlign: 'center', fontWeight: 700, fontSize: 16, color: t.scoreDuty > 0 ? '#7c3aed' : t.scoreDuty < 0 ? '#dc2626' : '#64748b' } }, t.scoreDuty > 0 ? `+${t.scoreDuty}` : String(t.scoreDuty)),
+                                                    React.createElement('td', { style: { minWidth: 240 } },
+                                                        React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 3 } },
+                                                            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                                                                React.createElement('span', { style: { fontSize: 10, color: '#64748b', width: 16, textAlign: 'right' } }, '代'),
+                                                                React.createElement('div', { style: { flex: 1, height: 14, background: '#e2e8f0', borderRadius: 4, overflow: 'hidden' } },
+                                                                    React.createElement('div', { style: { height: '100%', width: `${(t.subCountDuty / maxVal) * 100}%`, background: '#3b82f6', borderRadius: 4, transition: 'width 0.3s' } })
+                                                                ),
+                                                                React.createElement('span', { style: { fontSize: 11, fontWeight: 600, color: '#7c3aed', width: 20, textAlign: 'right' } }, t.subCountDuty)
+                                                            ),
+                                                            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                                                                React.createElement('span', { style: { fontSize: 10, color: '#64748b', width: 16, textAlign: 'right' } }, '缺'),
+                                                                React.createElement('div', { style: { flex: 1, height: 14, background: '#e2e8f0', borderRadius: 4, overflow: 'hidden' } },
+                                                                    React.createElement('div', { style: { height: '100%', width: `${(t.absenceSlotsDuty / maxVal) * 100}%`, background: '#ef4444', borderRadius: 4, transition: 'width 0.3s' } })
+                                                                ),
+                                                                React.createElement('span', { style: { fontSize: 11, fontWeight: 600, color: '#dc2626', width: 20, textAlign: 'right' } }, t.absenceSlotsDuty)
+                                                            )
+                                                        )
+                                                    )
+                                                )
+                                            )
+                                        )
+                                    )
+                                );
+                            })()
                         )
                     ),
 
