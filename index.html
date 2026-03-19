@@ -827,7 +827,14 @@
 	                if (!Array.isArray(classes)) classes = [];
 	                while (classes.length < 8) classes.push('');
 
-	                return {
+	                // absCountClass/absCountDuty/absCountTutorial: row[13], row[14], row[15]
+                let absCountClass = 0, absCountDuty = 0, absCountTutorial = 0;
+                if (colCount >= 16) {
+                    absCountClass = parseInt(row[13]) || 0;
+                    absCountDuty = parseInt(row[14]) || 0;
+                    absCountTutorial = parseInt(row[15]) || 0;
+                }
+                return {
 	                    id: parseInt(row[0]) || Date.now(),
 	                    name: row[1] || '',
 	                    role: row[2] || 'teacher',
@@ -838,6 +845,7 @@
 	                    timetable: timetable,
 	                    subCountClass, subCountDuty, subCountTutorial,
 	                    absenceCount,
+	                    absCountClass, absCountDuty, absCountTutorial,
 	                    subLimit: subLimit,
 	                    isActive: isActive,
 	                };
