@@ -1743,6 +1743,47 @@
                     // Already confirmed as substitute for this exact slot on this date? Skip
                     if (alreadySubbedThisSlot.has(t.id)) { console.log(`[代課篩選] 排除 ${t.name}: 已確認代課同節`); return false; }
 
+                    // [不重複推薦] 排除已在 arrangedSlots 中被安排到其他 slot 的老師
+                    // 例外：D1/D2/D3 合併當值算同一組，互相不算重複
+                    {
+                        const parts = slotKey.split('-');
+                        const dutyCode = parts[1]; // e.g. 'D1', 'D2', 'D3', 'D4', or undefined
+                        const isDutyGroup = ['D1','D2','D3'].includes(dutyCode);
+                        const dutyGroupKeys = isDutyGroup && weekday
+                            ? ['D1','D2','D3'].map(dc => dutySlotKey(weekday, dc))
+                            : [];
+
+                        const existingArrangedEntry = Object.entries(arrangedSlots).find(([key, val]) => {
+                            if (key === slotKey) return false; // 同一 slot 已由上面處理
+                            if (!val || val.substituteId !== t.id) return false;
+                            if (val.status !== 'auto' && val.status !== 'confirmed') return false;
+                            // D1/D2/D3 合併當值例外：若當前 slotKey 與 key 都屬於同一天的 D1/D2/D3，不算重複
+                            if (isDutyGroup && dutyGroupKeys.includes(key)) return false;
+                            return true;
+                        });
+                        if (existingArrangedEntry) {
+                            const [existingSlotKey] = existingArrangedEntry;
+                            console.log(`[代課篩選] 排除 ${t.name}: 已安排到其他課節 (${existingSlotKey})`);
+                            return false;
+                        }
+
+                        // 同樣排除已在 substitutionLog 中同一天其他 slot 有代課記錄的老師
+                        const existingLogEntry = substitutionLog.find(log => {
+                            if (log.date !== subDate) return false;
+                            if (log.slotKey === slotKey) return false; // 同一 slot 已由上面處理
+                            if (!log.substitute) return false;
+                            const logTeacher = teachers.find(tt => tt.name === log.substitute);
+                            if (!logTeacher || logTeacher.id !== t.id) return false;
+                            // D1/D2/D3 合併當值例外
+                            if (isDutyGroup && dutyGroupKeys.includes(log.slotKey)) return false;
+                            return true;
+                        });
+                        if (existingLogEntry) {
+                            console.log(`[代課篩選] 排除 ${t.name}: 已安排到其他課節 (${existingLogEntry.slotKey})`);
+                            return false;
+                        }
+                    }
+
                     // 6-period AM daily limit: only count AM periods (not PM/duty/tutorial)
                     // A teacher can have up to 6 AM teaching periods per day
                     let amPeriods = 0;
