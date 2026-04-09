@@ -1895,10 +1895,13 @@
                     // 1. 代課積分（少優先，代課次數少的排前面）
                     if (a.relevantSubCount !== b.relevantSubCount) return a.relevantSubCount - b.relevantSubCount;
                     
-                    // 2. 職級排序（班主任/非班主任 1 > 主任 2 > 副校長 3）
+                    // 2. 當天空堂數（多優先，空堂多的排前面）
+                    if ((a.freePeriodsToday || 0) !== (b.freePeriodsToday || 0)) return (b.freePeriodsToday || 0) - (a.freePeriodsToday || 0);
+
+                    // 3. 職級排序（班主任/非班主任 1 > 主任 2 > 副校長 3）
                     if (a.rolePriority !== b.rolePriority) return a.rolePriority - b.rolePriority;
                     
-                    // 3. 任教班別匹配（缺席老師教的班級，優先安排也教該班級的老師）
+                    // 4. 任教班別匹配（缺席老師教的班級，優先安排也教該班級的老師）
                     const absentTeacher = teachers.find(t => t.id === selectedAbsentee);
                     const absentClasses = absentTeacher ? (absentTeacher.classes || []) : [];
                     const aClasses = a.classes || [];
@@ -1909,16 +1912,13 @@
                     
                     if (aClassMatch !== bClassMatch) return aClassMatch - bClassMatch;
 
-                    // 4. 科目配對（後備排序）
+                    // 5. 科目配對（後備排序）
                     const absentSubjects = absentTeacher ? (absentTeacher.subjects || (absentTeacher.subject ? [absentTeacher.subject] : [])) : [];
                     const aSubjects = a.subjects || (a.subject ? [a.subject] : []);
                     const bSubjects = b.subjects || (b.subject ? [b.subject] : []);
                     const aSubMatch = absentSubjects.some(s => s && aSubjects.includes(s)) ? 0 : 1;
                     const bSubMatch = absentSubjects.some(s => s && bSubjects.includes(s)) ? 0 : 1;
-                    if (aSubMatch !== bSubMatch) return aSubMatch - bSubMatch;
-
-                    // 5. 當天空堂數（多優先，空堂多的排前面）
-                    return (b.freePeriodsToday || 0) - (a.freePeriodsToday || 0);
+                    return aSubMatch - bSubMatch;
                 });
             }, [selectedAbsentee, teachers, subCycleDay, subWeekday, arrangedSlots, calendarData, subDate, substitutionLog, absentSlots, absentReasons]);
 
@@ -2014,11 +2014,11 @@
                         return { ...t, rolePriority, relevantSubCount };
                     }).sort((a, b) => {
                         if (a.relevantSubCount !== b.relevantSubCount) return a.relevantSubCount - b.relevantSubCount;
-                        if (a.rolePriority !== b.rolePriority) return a.rolePriority - b.rolePriority;
                         // 空堂多優先
                         const aFree = countFreePeriodsForDay(a.timetable, amDay, weekday);
                         const bFree = countFreePeriodsForDay(b.timetable, amDay, weekday);
-                        return bFree - aFree;
+                        if (aFree !== bFree) return bFree - aFree;
+                        return a.rolePriority - b.rolePriority;
                     });
                     if (groupCandidates.length > 0) {
                         const best = groupCandidates[0];
@@ -2125,8 +2125,12 @@
                                                  (t.subCountTutorial || 0);
                         return { ...t, rolePriority, relevantSubCount };
                     }).sort((a, b) => {
-                        // Sort: 代課積分（少優先，可為負數）→ 職級 → 科目配對 → 空堂多優先
+                        // Sort: 代課積分（少優先）→ 空堂多優先 → 職級 → 科目配對
                         if (a.relevantSubCount !== b.relevantSubCount) return a.relevantSubCount - b.relevantSubCount;
+                        // 空堂多優先
+                        const aFree = countFreePeriodsForDay(a.timetable, amDay, weekday);
+                        const bFree = countFreePeriodsForDay(b.timetable, amDay, weekday);
+                        if (aFree !== bFree) return bFree - aFree;
                         if (a.rolePriority !== b.rolePriority) return a.rolePriority - b.rolePriority;
                         // 科目配對
                         const absentSubjects = absentTeacher.subjects || (absentTeacher.subject ? [absentTeacher.subject] : []);
@@ -2134,11 +2138,7 @@
                         const bSubjects = b.subjects || (b.subject ? [b.subject] : []);
                         const aMatch = absentSubjects.some(s => s && aSubjects.includes(s)) ? 0 : 1;
                         const bMatch = absentSubjects.some(s => s && bSubjects.includes(s)) ? 0 : 1;
-                        if (aMatch !== bMatch) return aMatch - bMatch;
-                        // 空堂多優先
-                        const aFree = countFreePeriodsForDay(a.timetable, amDay, weekday);
-                        const bFree = countFreePeriodsForDay(b.timetable, amDay, weekday);
-                        return bFree - aFree;
+                        return aMatch - bMatch;
                     });
 
                     if (candidates.length > 0) {
@@ -3592,7 +3592,7 @@
                                     React.createElement('button', { className: 'btn', onClick: () => { setCurrentArrangingSlot(null); setSubStep(2); } }, '← 返回')
                                 ),
                                 React.createElement('div', { style: { fontSize: 12, color: '#64748b', marginBottom: 12, padding: '8px 12px', background: '#f8fafc', borderRadius: 8 } },
-                                    (() => { const parts = currentArrangingSlot ? currentArrangingSlot.split('-') : []; const isDutyGrp = parts[1] === 'D1' || parts[1] === 'D2' || parts[1] === 'D3'; return isDutyGrp ? '排序：代課積分少優先（可為負數）→ 職級 → 科目配對 → 空堂多優先 ⚠️ 課前/小息/午息合併當值，所選老師將同時負責三個時段' : '排序：代課積分少優先（可為負數）→ 職級（非班主任=班主任 > 主任 > 副校長）→ 任教班別/科目配對 → 空堂多優先'; })()
+                                    (() => { const parts = currentArrangingSlot ? currentArrangingSlot.split('-') : []; const isDutyGrp = parts[1] === 'D1' || parts[1] === 'D2' || parts[1] === 'D3'; return isDutyGrp ? '排序：代課積分少優先（可為負數）→ 空堂多優先 → 職級 → 科目配對 ⚠️ 課前/小息/午息合併當值，所選老師將同時負責三個時段' : '排序：代課積分少優先（可為負數）→ 空堂多優先 → 職級（非班主任=班主任 > 主任 > 副校長）→ 任教班別/科目配對'; })()
                                 ),
                                 recommendations.length === 0
                                     ? React.createElement('div', { style: { padding: 20, textAlign: 'center', color: '#94a3b8' } }, '沒有符合條件的代課老師')
@@ -4260,9 +4260,9 @@
                                     React.createElement('div', { style: { fontSize: 13, color: '#475569', lineHeight: 1.8 } },
                                         React.createElement('p', null, '所有代課排序：'),
                                         React.createElement('p', null, '1. 代課次數少優先（根據安排類型使用對應計數器）'),
-                                        React.createElement('p', null, '2. 職級優先：非班主任 = 班主任 > 主任 > 副校長 > 教學助理'),
-                                        React.createElement('p', null, '3. 任教班別/科目配對'),
-                                        React.createElement('p', null, '4. 當天空堂數多優先（上午+下午+導修，不含當值）'),
+                                        React.createElement('p', null, '2. 當天空堂數多優先（上午+下午+導修，不含當值）'),
+                                        React.createElement('p', null, '3. 職級優先：非班主任 = 班主任 > 主任 > 副校長 > 教學助理'),
+                                        React.createElement('p', null, '4. 任教班別/科目配對'),
                                         React.createElement('p', null, ''),
                                         React.createElement('p', null, '篩選條件：'),
                                         React.createElement('p', null, '• 當天上午課節數（含代課）不超過 6 節'),
